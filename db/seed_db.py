@@ -1,6 +1,7 @@
 """
 DONPROFESOR (#Hack4Edu 2026, Reto 13) · Inicializador de Base de Datos Real.
-Crea el esquema con las 37 variables oficiales y los usuarios de acceso institucional.
+Crea el esquema con las 37 variables oficiales y los usuarios de acceso institucional de demostración
+(contraseñas guardadas con hash; nuevas cuentas desde POST /api/auth/register).
 Deja la tabla principal `alumnos_hack4edu` completamente vacía (0 registros), lista
 para recibir los datos reales del reto y las salidas del modelo predictivo.
 """
@@ -41,11 +42,13 @@ def init_and_seed_database(force_reset: bool = False) -> None:
     cur.executescript(SCHEMA_SQL.read_text(encoding="utf-8"))
     cur.executescript(VIEWS_SQL.read_text(encoding="utf-8"))
 
-    # Crear o actualizar los usuarios institucionales para login JWT
+    # Usuarios de demostración (contraseña: donprofesor2026), guardados con hash PBKDF2-SHA256.
+    # INSERT OR IGNORE: nunca sobrescribe cuentas existentes (ni las registradas desde la web
+    # ni la contraseña re-cifrada de usuarios antiguos).
     usuarios_demo = [
         (
             "docente",
-            "donprofesor2026",
+            "pbkdf2_sha256$600000$AGiEME8rGzgIXb79kqJ2MA$S9HKNflVaCEQo3XGJxHALdjOV8AT-5-19DgRmr9X8dY",
             "Prof. Carmen Morales",
             "docente",
             "ESC-01",
@@ -55,7 +58,7 @@ def init_and_seed_database(force_reset: bool = False) -> None:
         ),
         (
             "director",
-            "donprofesor2026",
+            "pbkdf2_sha256$600000$rSPVrEDjRDSoysywAS3ynw$3PHX73vpdOWdLVIF5qbSqUHuuRJWxc6TG4Uw7YqgTtw",
             "Dr. Roberto Mendoza",
             "director",
             "ESC-01",
@@ -65,7 +68,7 @@ def init_and_seed_database(force_reset: bool = False) -> None:
         ),
         (
             "delegado",
-            "donprofesor2026",
+            "pbkdf2_sha256$600000$0BD41QBCjCSuAqpv6NYBkQ$SI4mpipIs11dA1ToElsPg1SBNxLBMo-s-yElyDM-Boo",
             "Lic. Sofía Herrera",
             "delegado",
             None,
@@ -77,7 +80,7 @@ def init_and_seed_database(force_reset: bool = False) -> None:
 
     cur.executemany(
         """
-        INSERT OR REPLACE INTO usuario_plataforma
+        INSERT OR IGNORE INTO usuario_plataforma
         (username, password_hash, nombre_completo, rol, escuela_id, grado_secundaria, ugel, titulo_cargo)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?);
         """,

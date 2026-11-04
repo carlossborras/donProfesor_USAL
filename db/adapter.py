@@ -11,9 +11,23 @@ Como la Base de Datos definitiva la está construyendo otro compañero del equip
 
 from __future__ import annotations
 import os
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import create_engine, text
 from db.seed_db import get_sqlite_connection, init_and_seed_database, SQLITE_PATH
+
+
+_PLACEHOLDER = re.compile(r"\?")
+
+
+def _to_named_params(sql: str, params: tuple) -> Tuple[str, Dict[str, Any]]:
+    """Convierte los marcadores '?' (estilo SQLite) en ':p0, :p1...' para SQLAlchemy/PostgreSQL.
+
+    Así las mismas consultas parametrizadas funcionan en los dos motores (nunca se concatenan valores).
+    """
+    contador = iter(range(len(params)))
+    sql_named = _PLACEHOLDER.sub(lambda _m: f":p{next(contador)}", sql) if params else sql
+    return sql_named.rstrip().rstrip(";"), {f"p{i}": v for i, v in enumerate(params)}
 
 
 class DatabaseAdapter:
@@ -45,8 +59,9 @@ class DatabaseAdapter:
 
     def fetch_all(self, sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
         if self.mode == "EXTERNAL_POSTGRESQL" and self.engine is not None:
+            sql_named, bind = _to_named_params(sql, params)
             with self.engine.connect() as conn:
-                result = conn.execute(text(sql))
+                result = conn.execute(text(sql_named), bind)
                 return [dict(row._mapping) for row in result.fetchall()]
         else:
             init_and_seed_database(force_reset=False)
@@ -63,8 +78,9 @@ class DatabaseAdapter:
 
     def execute_write(self, sql: str, params: tuple = ()) -> None:
         if self.mode == "EXTERNAL_POSTGRESQL" and self.engine is not None:
+            sql_named, bind = _to_named_params(sql, params)
             with self.engine.begin() as conn:
-                conn.execute(text(sql))
+                conn.execute(text(sql_named), bind)
         else:
             init_and_seed_database(force_reset=False)
             conn = get_sqlite_connection()
