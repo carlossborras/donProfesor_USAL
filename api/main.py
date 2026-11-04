@@ -1,15 +1,19 @@
 """
 DONPROFESOR (#Hack4Edu) · Backend API con JWT, Control de Acceso por Rol y Puente MCP (Persona 3)
-y Servidor del Frontend Web con los 3 Paneles (Persona 4).
+y Servidor del Frontend React Modular con los 3 Paneles (Persona 4).
 
 Características implementadas:
 1. Autenticación JWT con `rol` ('docente', 'director', 'delegado') y ámbito (`escuela_id`, `grupo_id`).
-2. Middleware y dependencias que verifican el rol y consultan exclusivamente la vista SQL autorizada:
+2. Adaptador Desacoplado de Base de Datos (`db/adapter.py`): funciona inmediatamente en modo
+   provisional (`PROVISIONAL_SQLITE_SEED`) mientras el compañero de BD termina la base de datos
+   definitiva, y conmuta automáticamente a PostgreSQL externo al definir `DATABASE_URL`.
+3. Middleware y dependencias que verifican el rol y consultan exclusivamente la vista SQL autorizada:
    - `vista_docente` (para el tutor de aula, sin rankings ni semáforos individuales)
    - `vista_director` y `vista_director_clima` (para dirección de centro, gráfica lluvia + cosecha + recursos)
    - `vista_delegado` (para coordinación territorial, mapa de escuelas y simulador de subvenciones)
-3. Endpoints del Dashboard con los avisos del modelo predictivo (`GET /api/panel`, `POST /api/acciones`, `POST /api/simular`).
-4. Endpoint del Chat conectado al Servidor MCP de Base de Datos (`POST /api/chat-mcp`, `GET /api/mcp/tools`).
+4. Endpoints del Dashboard con los avisos del modelo predictivo (`GET /api/panel`, `POST /api/acciones`, `POST /api/simular-subvencion`).
+5. Endpoint del Chat conectado al Servidor MCP de Base de Datos (`POST /api/chat-mcp`, `GET /api/mcp/tools`).
+6. Sirve la aplicación React modular ubicada en `web/frontend/`.
 """
 
 from __future__ import annotations
@@ -17,19 +21,24 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 import jwt
 from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from db.seed_db import init_and_seed_database, get_sqlite_connection
+from db.seed_db import init_and_seed_database
+from db.adapter import db_adapter
 from mcp_server.db_mcp_server import list_tables, describe_table, read_query
 from mcp_server.chat_agent import answer_pedagogical_chat_with_mcp
 
 JWT_SECRET = os.environ.get("DONPROFESOR_JWT_SECRET", "hack4edu-donprofesor-secret-key-2026")
 JWT_ALG = "HS256"
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = ROOT_DIR / "web" / "frontend"
 
 
 @asynccontextmanager
@@ -41,12 +50,15 @@ async def lifespan(app_instance: FastAPI):
 app = FastAPI(
     title="DONPROFESOR — Plataforma de Analítica Educativa Acompañada (#Hack4Edu)",
     description=(
-        "Backend API con JWT, Vistas SQL por Rol (GRANT SELECT), Dashboard del Modelo Predictivo "
-        "y Chat conectado a la Base de Datos mediante Model Context Protocol (MCP)."
+        "Backend API con JWT, Vistas SQL por Rol (GRANT SELECT), Adaptador Provisional/PostgreSQL, "
+        "Dashboard React del Modelo Predictivo y Chat conectado a la Base de Datos mediante MCP."
     ),
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
+
+if (FRONTEND_DIR / "src").exists():
+    app.mount("/src", StaticFiles(directory=str(FRONTEND_DIR / "src")), name="react_src")
 
 
 class LoginRequest(BaseModel):
@@ -92,7 +104,6 @@ def create_jwt_token(user_row: Dict[str, Any]) -> str:
 def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """
     Middleware/Dependencia JWT que verifica el token y extrae el rol y ámbito del usuario.
-    Si no se envía cabecera Authorization, permite pruebas rápidas devolviendo el perfil docente por defecto.
     """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
@@ -107,36 +118,37 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, A
         raise HTTPException(status_code=401, detail=f"Token JWT inválido o expirado: {exc}")
 
 
+@app.get("/api/db-status")
+def get_database_adapter_status() -> Dict[str, Any]:
+    """Devuelve el estado actual del adaptador de base de datos (Provisional vs PostgreSQL externo)."""
+    return db_adapter.get_status_metadata()
+
+
 @app.post("/api/auth/login")
 def login_endpoint(req: LoginRequest) -> Dict[str, Any]:
-    init_and_seed_database()
-    conn = get_sqlite_connection()
-    cur = conn.cursor()
-    cur.execute(
+    row = db_adapter.fetch_one(
         "SELECT * FROM usuario_plataforma WHERE username = ? AND password_hash = ?;",
         (req.username.lower().strip(), req.password),
     )
-    row = cur.fetchone()
-    conn.close()
     if not row:
         raise HTTPException(
             status_code=401,
             detail="Credenciales incorrectas. Usuarios disponibles: docente, director, delegado (clave: donprofesor2026).",
         )
-    user_dict = dict(row)
-    token = create_jwt_token(user_dict)
+    token = create_jwt_token(row)
     return {
         "access_token": token,
         "token_type": "bearer",
         "user": {
-            "username": user_dict["username"],
-            "nombre_completo": user_dict["nombre_completo"],
-            "rol": user_dict["rol"],
-            "db_role": f"role_{user_dict['rol']}",
-            "escuela_id": user_dict["escuela_id"],
-            "grupo_id": user_dict["grupo_id"],
-            "titulo_cargo": user_dict["titulo_cargo"],
+            "username": row["username"],
+            "nombre_completo": row["nombre_completo"],
+            "rol": row["rol"],
+            "db_role": f"role_{row['rol']}",
+            "escuela_id": row["escuela_id"],
+            "grupo_id": row["grupo_id"],
+            "titulo_cargo": row["titulo_cargo"],
         },
+        "db_status": db_adapter.get_status_metadata(),
     }
 
 
@@ -144,50 +156,41 @@ def login_endpoint(req: LoginRequest) -> Dict[str, Any]:
 def get_role_dashboard_panel(user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
     """
     Devuelve todos los datos del Dashboard y del Modelo Predictivo consultando
-    exclusivamente la Vista SQL correspondiente al rol del token JWT:
+    exclusivamente la Vista SQL correspondiente al rol del token JWT a través del adaptador:
     - docente   -> vista_docente + vista_avisos_predictivos
     - director  -> vista_director + vista_director_clima + vista_avisos_predictivos
     - delegado  -> vista_delegado + vista_avisos_predictivos
     """
-    init_and_seed_database()
     rol = user["rol"]
     escuela_id = user.get("escuela_id") or "ESC-01"
     grupo_id = user.get("grupo_id") or "ESC-01-2B"
-
-    conn = get_sqlite_connection()
-    cur = conn.cursor()
+    db_status = db_adapter.get_status_metadata()
 
     # 1. Avisos del modelo predictivo para el rol activo
-    cur.execute(
+    avisos = db_adapter.fetch_all(
         "SELECT * FROM vista_avisos_predictivos WHERE rol_destino = ? ORDER BY prediccion_id ASC;",
         (rol,),
     )
-    avisos = [dict(r) for r in cur.fetchall()]
 
     # 2. Historial de acciones humanas registradas
-    cur.execute(
+    acciones_registradas = db_adapter.fetch_all(
         "SELECT * FROM registro_accion_humana WHERE rol_usuario = ? ORDER BY accion_id DESC LIMIT 10;",
         (rol,),
     )
-    acciones_registradas = [dict(r) for r in cur.fetchall()]
 
     # 3. Datos específicos de cada vista SQL según el rol
     if rol == "docente":
-        cur.execute(
+        alumnos_aula = db_adapter.fetch_all(
             "SELECT * FROM vista_docente WHERE grupo_id = ? ORDER BY codigo_seguimiento ASC;",
             (grupo_id,),
         )
-        alumnos_aula = [dict(r) for r in cur.fetchall()]
-
-        cur.execute(
+        serie_clima = db_adapter.fetch_all(
             "SELECT * FROM vista_director_clima WHERE escuela_id = ? ORDER BY semana_num ASC;",
             (escuela_id,),
         )
-        serie_clima = [dict(r) for r in cur.fetchall()]
-
-        conn.close()
         return {
             "user": user,
+            "db_status": db_status,
             "sql_security": {
                 "db_role": "role_docente",
                 "granted_views": ["vista_docente", "vista_avisos_predictivos"],
@@ -228,21 +231,17 @@ def get_role_dashboard_panel(user: Dict[str, Any] = Depends(get_current_user)) -
         }
 
     elif rol == "director":
-        cur.execute(
+        grupos_centro = db_adapter.fetch_all(
             "SELECT * FROM vista_director WHERE escuela_id = ? ORDER BY grupo_id ASC;",
             (escuela_id,),
         )
-        grupos_centro = [dict(r) for r in cur.fetchall()]
-
-        cur.execute(
+        serie_clima = db_adapter.fetch_all(
             "SELECT * FROM vista_director_clima WHERE escuela_id = ? ORDER BY semana_num ASC;",
             (escuela_id,),
         )
-        serie_clima = [dict(r) for r in cur.fetchall()]
-
-        conn.close()
         return {
             "user": user,
+            "db_status": db_status,
             "sql_security": {
                 "db_role": "role_director",
                 "granted_views": ["vista_director", "vista_director_clima", "vista_avisos_predictivos"],
@@ -283,11 +282,10 @@ def get_role_dashboard_panel(user: Dict[str, Any] = Depends(get_current_user)) -
         }
 
     else:  # delegado
-        cur.execute("SELECT * FROM vista_delegado ORDER BY escuela_id ASC;")
-        escuelas_red = [dict(r) for r in cur.fetchall()]
-        conn.close()
+        escuelas_red = db_adapter.fetch_all("SELECT * FROM vista_delegado ORDER BY escuela_id ASC;")
         return {
             "user": user,
+            "db_status": db_status,
             "sql_security": {
                 "db_role": "role_delegado",
                 "granted_views": ["vista_delegado", "vista_avisos_predictivos"],
@@ -335,12 +333,8 @@ def register_human_action(
     Registra la decisión tomada por el docente, director o delegado sobre un aviso del modelo,
     actualizando su estado a 'Acuerdo registrado' y dejando trazabilidad de supervisión humana.
     """
-    init_and_seed_database()
-    conn = get_sqlite_connection()
-    cur = conn.cursor()
-
     ambito = user.get("grupo_id") if user["rol"] == "docente" else (user.get("escuela_id") or "RED-SUR")
-    cur.execute(
+    db_adapter.execute_write(
         """
         INSERT INTO registro_accion_humana
         (prediccion_id, rol_usuario, usuario_nombre, ambito_id, decision_tomada, comentario_pedagogico)
@@ -355,12 +349,10 @@ def register_human_action(
             req.comentario_pedagogico or "Acción revisada y validada bajo criterio profesional docente.",
         ),
     )
-    cur.execute(
+    db_adapter.execute_write(
         "UPDATE prediccion SET estado_revision = 'Acuerdo registrado' WHERE prediccion_id = ?;",
         (req.prediccion_id,),
     )
-    conn.commit()
-    conn.close()
     return {
         "status": "ok",
         "message": "Acción pedagógica registrada correctamente en la base de datos.",
@@ -428,6 +420,7 @@ def get_mcp_tools_metadata(user: Dict[str, Any] = Depends(get_current_user)) -> 
         "mcp_server_name": "donprofesor-db-mcp",
         "protocol": "Model Context Protocol (MCP)",
         "active_db_role": f"role_{rol}",
+        "db_status": db_adapter.get_status_metadata(),
         "tools": [
             {
                 "name": "list_tables",
@@ -469,6 +462,10 @@ def chat_with_mcp_endpoint(
 
 
 @app.get("/", response_class=HTMLResponse)
-def serve_donprofesor_web() -> HTMLResponse:
-    html_file = Path(__file__).resolve().parent.parent / "web" / "templates" / "index.html"
-    return HTMLResponse(content=html_file.read_text(encoding="utf-8"))
+def serve_donprofesor_react_app() -> HTMLResponse:
+    """Sirve el punto de entrada de la aplicación React modular ubicada en `web/frontend/index.html`."""
+    dist_index = FRONTEND_DIR / "dist" / "index.html"
+    if dist_index.exists():
+        return HTMLResponse(content=dist_index.read_text(encoding="utf-8"))
+    react_index = FRONTEND_DIR / "index.html"
+    return HTMLResponse(content=react_index.read_text(encoding="utf-8"))

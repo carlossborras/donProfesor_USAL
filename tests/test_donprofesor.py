@@ -1,14 +1,18 @@
 """
-Pruebas automatizadas de integración para Persona 3 (Base de Datos, API JWT, Vistas SQL y Servidor MCP)
-y Persona 4 (Frontend Web DONPROFESOR con los 3 Paneles).
+Pruebas automatizadas de integración para Persona 3 (Base de Datos con Adaptador Provisional/PostgreSQL,
+API JWT, Vistas SQL y Servidor MCP) y Persona 4 (Aplicación React Modular DONPROFESOR con los 3 Paneles).
 """
 
 from __future__ import annotations
+import subprocess
+import sys
+from pathlib import Path
 from fastapi.testclient import TestClient
 from api.main import app
 from mcp_server.db_mcp_server import list_tables, describe_table, read_query
 
 client = TestClient(app)
+ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
 def test_login_and_role_views_access():
@@ -21,6 +25,8 @@ def test_login_and_role_views_access():
         data = resp.json()
         token = data["access_token"]
         assert data["user"]["rol"] == role
+        assert "db_status" in data
+        assert data["db_status"]["is_provisional"] is True
 
         panel_resp = client.get(
             "/api/panel", headers={"Authorization": f"Bearer {token}"}
@@ -28,6 +34,7 @@ def test_login_and_role_views_access():
         assert panel_resp.status_code == 200
         panel_data = panel_resp.json()
         assert panel_data["user"]["rol"] == role
+        assert panel_data["db_status"]["db_mode"] == "PROVISIONAL_SQLITE_SEED"
         assert len(panel_data["kpis"]) == 5
         assert len(panel_data["avisos_predictivos"]) >= 3
 
@@ -84,3 +91,33 @@ def test_chat_mcp_and_human_action_registration():
     )
     assert act_resp.status_code == 200
     assert act_resp.json()["nuevo_estado"] == "Acuerdo registrado"
+
+
+def test_modular_react_frontend_served_and_web_app_imports():
+    # 1. Verificar que la raíz sirve el entry point de React y que los componentes modulares existen
+    root_resp = client.get("/")
+    assert root_resp.status_code == 200
+    assert "bootModularReactApp" in root_resp.text
+
+    for component_path in [
+        "/src/App.jsx",
+        "/src/components/EthicalBanner.jsx",
+        "/src/components/Navbar.jsx",
+        "/src/components/PredictiveAlertsPanel.jsx",
+        "/src/components/RainHarvestChart.jsx",
+        "/src/components/RoleViews.jsx",
+        "/src/components/McpChatSidebar.jsx",
+        "/src/components/Modals.jsx",
+        "/src/styles/app.css",
+    ]:
+        comp_resp = client.get(component_path)
+        assert comp_resp.status_code == 200, f"Fallo al servir {component_path}"
+
+    # 2. Verificar que importar web/app.py desde el directorio raíz funciona sin ModuleNotFoundError
+    cmd = [
+        sys.executable,
+        "-c",
+        "import runpy; m = runpy.run_path('web/app.py', run_name='not_main'); assert 'app' in m",
+    ]
+    proc = subprocess.run(cmd, cwd=str(ROOT_DIR), capture_output=True, text=True, check=False)
+    assert proc.returncode == 0, f"Error importando web/app.py: {proc.stderr}"
