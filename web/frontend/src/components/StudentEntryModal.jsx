@@ -1,7 +1,19 @@
 import React, { useState } from "react";
 import { createStudentApi, pasteStudentDataApi } from "../services/api.js";
 
-export function StudentEntryModal({ token, onClose, onSuccess, currentSchoolId, currentGrade }) {
+export function StudentEntryModal({
+  token,
+  userRole = "docente",
+  currentSchoolId,
+  currentGrade,
+  userName = "",
+  onClose,
+  onSuccess,
+}) {
+  const isDocente = userRole === "docente";
+  const defaultGrade = currentGrade ? parseInt(currentGrade, 10) : 2;
+  const defaultSchool = currentSchoolId || "ESC-01";
+
   const [activeTab, setActiveTab] = useState("form"); // "form" | "paste"
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -9,8 +21,8 @@ export function StudentEntryModal({ token, onClose, onSuccess, currentSchoolId, 
   // Estado del formulario manual
   const [formData, setFormData] = useState({
     alumno_id: `ALU-${Math.floor(10000 + Math.random() * 90000)}`,
-    escuela_id: currentSchoolId || "ESC-01",
-    grado_secundaria: currentGrade || 2,
+    escuela_id: defaultSchool,
+    grado_secundaria: defaultGrade,
     sexo: "F",
     edad: 14,
     zona_escuela: "Rural",
@@ -97,6 +109,26 @@ export function StudentEntryModal({ token, onClose, onSuccess, currentSchoolId, 
             <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#5a7066" }}>
               Introduce los datos de un alumno o pega varias filas directamente desde Excel.
             </p>
+            {isDocente && (
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "#eef6f3",
+                  color: "#1f6351",
+                  border: "1px solid #c7dcd3",
+                  padding: "4px 10px",
+                  borderRadius: "14px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  marginTop: "8px",
+                }}
+              >
+                <span>Asignación automática:</span>
+                <span>Tu grupo de tutoría ({defaultGrade}º de Secundaria · {defaultSchool})</span>
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -171,20 +203,38 @@ export function StudentEntryModal({ token, onClose, onSuccess, currentSchoolId, 
 
               <div className="form-group">
                 <label style={{ fontSize: "12px", fontWeight: 600, color: "#1c2a24", display: "block", marginBottom: "4px" }}>
-                  Grado de Secundaria
+                  Grado de Secundaria {isDocente ? "(Asignado a tu grupo)" : ""}
                 </label>
-                <select
-                  className="form-select"
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #dcd8cf" }}
-                  value={formData.grado_secundaria}
-                  onChange={(e) => handleChange("grado_secundaria", e.target.value)}
-                >
-                  <option value={1}>1º de Secundaria</option>
-                  <option value={2}>2º de Secundaria</option>
-                  <option value={3}>3º de Secundaria</option>
-                  <option value={4}>4º de Secundaria</option>
-                  <option value={5}>5º de Secundaria</option>
-                </select>
+                {isDocente ? (
+                  <div
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid #c7dcd3",
+                      background: "#f4f8f6",
+                      color: "#1f6351",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    {defaultGrade}º de Secundaria ({defaultSchool})
+                  </div>
+                ) : (
+                  <select
+                    className="form-select"
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #dcd8cf" }}
+                    value={formData.grado_secundaria}
+                    onChange={(e) => handleChange("grado_secundaria", e.target.value)}
+                  >
+                    <option value={1}>1º de Secundaria</option>
+                    <option value={2}>2º de Secundaria</option>
+                    <option value={3}>3º de Secundaria</option>
+                    <option value={4}>4º de Secundaria</option>
+                    <option value={5}>5º de Secundaria</option>
+                  </select>
+                )}
               </div>
 
               <div className="form-group">
@@ -400,6 +450,22 @@ export function StudentEntryModal({ token, onClose, onSuccess, currentSchoolId, 
         {/* PESTAÑA 2: PEGAR TABLA */}
         {activeTab === "paste" && (
           <form onSubmit={handlePasteSubmit}>
+            {isDocente && (
+              <div
+                style={{
+                  background: "#f4f8f6",
+                  border: "1px solid #c7dcd3",
+                  color: "#1f6351",
+                  padding: "8px 12px",
+                  borderRadius: "6px",
+                  fontSize: "12.5px",
+                  marginBottom: "12px",
+                  lineHeight: "1.4",
+                }}
+              >
+                <strong>Asignación a tu grupo:</strong> Todos los estudiantes pegados se incorporarán directamente a tu grupo de tutoría (<strong>{defaultGrade}º de Secundaria · {defaultSchool}</strong>).
+              </div>
+            )}
             <p style={{ fontSize: "13px", color: "#4e5d55", marginBottom: "10px", lineHeight: "1.5" }}>
               Puedes copiar y pegar filas directamente desde Microsoft Excel o Google Sheets. El sistema detectará las columnas automáticamente y aplicará el modelo predictivo:
             </p>

@@ -126,6 +126,7 @@ def create_access_token(user_row: Dict[str, Any]) -> str:
     grado = user_row.get("grado_secundaria")
     payload = {
         "sub": user_row["username"],
+        "username": user_row["username"],
         "nombre_completo": user_row.get("nombre_completo"),
         "rol": user_row["rol"],
         "escuela_id": user_row.get("escuela_id"),
@@ -165,6 +166,7 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, A
         raise _no_autenticado("Sesión no válida. Vuelve a iniciar sesión.") from None
     if claims.get("rol") not in ROLES:
         raise _no_autenticado("Sesión no válida. Vuelve a iniciar sesión.")
+    claims.setdefault("username", claims.get("sub"))
     return claims
 
 

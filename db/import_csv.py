@@ -27,7 +27,13 @@ def clear_alumnos_table() -> int:
     return deleted
 
 
-def import_csv_file(csv_path: str) -> int:
+def import_csv_file(
+    csv_path: str,
+    default_escuela_id: Optional[str] = None,
+    default_grado: Optional[int] = None,
+    docente_tutor: Optional[str] = None,
+    override_scope: bool = False,
+) -> int:
     """Importa un archivo CSV mapeando sus columnas a `alumnos_hack4edu`."""
     path = Path(csv_path)
     if not path.exists():
@@ -148,16 +154,25 @@ def import_csv_file(csv_path: str) -> int:
 
     rows_to_insert = []
     for _, r in df.iterrows():
+        if override_scope:
+            row_escuela = default_escuela_id or str(r.get("escuela_id") or "ESC-01")
+            row_grado = int(default_grado) if default_grado is not None else int(r.get("grado_secundaria") or 2)
+            row_tutor = docente_tutor or str(r.get("docente_tutor") or "") or None
+        else:
+            row_escuela = str(r.get("escuela_id") or default_escuela_id or "ESC-01")
+            row_grado = int(r.get("grado_secundaria") or default_grado or 2)
+            row_tutor = str(r.get("docente_tutor") or docente_tutor or "") or None
+
         rows_to_insert.append(
             (
                 str(r.get("alumno_id")),
-                str(r.get("escuela_id") or "ESC-01"),
+                row_escuela,
                 str(r.get("ugel") or "UGEL-01-NORTE"),
                 str(r.get("distrito") or "Valle Alto"),
                 str(r.get("zona_escuela") or "Rural"),
                 str(r.get("sexo") or "M"),
                 int(r.get("edad") or 14),
-                int(r.get("grado_secundaria") or 2),
+                row_grado,
                 str(r.get("tamano_familia") or "3 o menos"),
                 int(r.get("educacion_madre_0_4") or 2),
                 int(r.get("educacion_padre_0_4") or 2),
@@ -201,6 +216,7 @@ def import_csv_file(csv_path: str) -> int:
                 else None,
                 str(r.get("factor_principal_riesgo") or ""),
                 str(r.get("recomendacion_pedagogica") or ""),
+                row_tutor,
             )
         )
 
@@ -219,7 +235,8 @@ def import_csv_file(csv_path: str) -> int:
             faltas_totales_calculadas, asistencia_pct_calculada, promedio_notas_calculado,
             prob_abandono_pct, prediccion_nota_t3, prediccion_faltas_t3,
             prob_perdida_beca_pct, prob_repeticion_pct, necesidad_intervencion,
-            indice_desanimo, factor_principal_riesgo, recomendacion_pedagogica
+            indice_desanimo, factor_principal_riesgo, recomendacion_pedagogica,
+            docente_tutor
         ) VALUES (
             ?, ?, ?, ?, ?,
             ?, ?, ?, ?,
@@ -231,7 +248,8 @@ def import_csv_file(csv_path: str) -> int:
             ?, ?, ?,
             ?, ?, ?,
             ?, ?, ?,
-            ?, ?, ?
+            ?, ?, ?,
+            ?
         );
         """,
         rows_to_insert,

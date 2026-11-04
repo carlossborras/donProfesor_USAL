@@ -1073,8 +1073,10 @@ export function App({ session, onLogout }) {
       {studentModalOpen && (
         <StudentEntryModal
           token={token}
+          userRole={activeRole}
           currentSchoolId={user?.escuela_id}
           currentGrade={user?.grado_secundaria}
+          userName={user?.nombre_completo || user?.username}
           onClose={() => setStudentModalOpen(false)}
           onSuccess={(msg) => {
             showToast(msg);

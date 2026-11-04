@@ -544,7 +544,15 @@ async def upload_csv_dataset(file: UploadFile = File(...), user: Dict[str, Any] 
     temp_path = ROOT_DIR / "db" / "uploaded_dataset.csv"
     temp_path.write_bytes(contents)
     try:
-        count = import_csv_file(str(temp_path))
+        is_docente = user.get("rol") == "docente"
+        u_name = user.get("username") or user.get("sub")
+        count = import_csv_file(
+            str(temp_path),
+            default_escuela_id=user.get("escuela_id"),
+            default_grado=user.get("grado_secundaria") if is_docente else None,
+            docente_tutor=u_name if is_docente else None,
+            override_scope=is_docente,
+        )
         temp_path.unlink(missing_ok=True)
         return {
             "status": "ok",
@@ -591,7 +599,16 @@ def create_student_endpoint(
     if not alumno_id:
         alumno_id = f"ALU-{random.randint(20000, 99999)}"
 
-    escuela_id = (req.escuela_id or "").strip() or user.get("escuela_id") or "ESC-01"
+    is_docente = user.get("rol") == "docente"
+    if is_docente:
+        escuela_id = user.get("escuela_id") or "ESC-01"
+        grado_secundaria = int(user.get("grado_secundaria") or 2)
+        docente_tutor = user.get("username") or user.get("sub")
+    else:
+        escuela_id = (req.escuela_id or "").strip() or user.get("escuela_id") or "ESC-01"
+        grado_secundaria = req.grado_secundaria or 2
+        docente_tutor = None
+
     ugel = (req.ugel or "").strip() or user.get("ugel") or "UGEL-01-NORTE"
     distrito = req.distrito or "Valle Alto"
     zona_escuela = req.zona_escuela or "Rural"
@@ -609,7 +626,7 @@ def create_student_endpoint(
         "zona_escuela": zona_escuela,
         "sexo": req.sexo,
         "edad": req.edad,
-        "grado_secundaria": req.grado_secundaria,
+        "grado_secundaria": grado_secundaria,
         "tamano_familia": req.tamano_familia,
         "educacion_madre_0_4": req.educacion_madre_0_4,
         "educacion_padre_0_4": req.educacion_padre_0_4,
@@ -632,6 +649,7 @@ def create_student_endpoint(
         "faltas_totales_calculadas": faltas_tot,
         "asistencia_pct_calculada": asist_pct,
         "promedio_notas_calculado": prom_notas,
+        "docente_tutor": docente_tutor,
     }
 
     df_single = pd.DataFrame([student_dict])
@@ -665,7 +683,8 @@ def create_student_endpoint(
             faltas_totales_calculadas, asistencia_pct_calculada, promedio_notas_calculado,
             prob_abandono_pct, prediccion_nota_t3, prediccion_faltas_t3,
             prob_perdida_beca_pct, prob_repeticion_pct, necesidad_intervencion,
-            indice_desanimo, factor_principal_riesgo, recomendacion_pedagogica
+            indice_desanimo, factor_principal_riesgo, recomendacion_pedagogica,
+            docente_tutor
         ) VALUES (
             ?, ?, ?, ?, ?,
             ?, ?, ?, ?,
@@ -677,7 +696,8 @@ def create_student_endpoint(
             ?, ?, ?,
             ?, ?, ?,
             ?, ?, ?,
-            ?, ?, ?
+            ?, ?, ?,
+            ?
         );
         """,
         (
@@ -688,7 +708,7 @@ def create_student_endpoint(
             zona_escuela,
             req.sexo,
             req.edad,
-            req.grado_secundaria,
+            grado_secundaria,
             req.tamano_familia,
             req.educacion_madre_0_4,
             req.educacion_padre_0_4,
@@ -720,13 +740,22 @@ def create_student_endpoint(
             indice_desanimo,
             factor_riesgo,
             recom_pedag,
+            docente_tutor,
         ),
     )
 
+    msg = (
+        f"Estudiante {alumno_id} registrado y asignado a tu grupo ({grado_secundaria}º de Secundaria · {escuela_id})."
+        if is_docente
+        else f"Estudiante {alumno_id} registrado y analizado exitosamente."
+    )
     return {
         "status": "ok",
-        "message": f"Estudiante {alumno_id} registrado y analizado exitosamente.",
+        "message": msg,
         "alumno_id": alumno_id,
+        "escuela_id": escuela_id,
+        "grado_secundaria": grado_secundaria,
+        "docente_tutor": docente_tutor,
         "necesidad_intervencion": necesidad,
         "factor_principal_riesgo": factor_riesgo,
         "recomendacion_pedagogica": recom_pedag,
@@ -745,11 +774,24 @@ def paste_data_endpoint(
     temp_path = ROOT_DIR / "db" / "pasted_dataset.csv"
     temp_path.write_text(text, encoding="utf-8")
     try:
-        count = import_csv_file(str(temp_path))
+        is_docente = user.get("rol") == "docente"
+        u_name = user.get("username") or user.get("sub")
+        count = import_csv_file(
+            str(temp_path),
+            default_escuela_id=user.get("escuela_id"),
+            default_grado=user.get("grado_secundaria") if is_docente else None,
+            docente_tutor=u_name if is_docente else None,
+            override_scope=is_docente,
+        )
         temp_path.unlink(missing_ok=True)
+        msg = (
+            f"Se han importado y asignado a tu grupo ({user.get('grado_secundaria')}º Sec · {user.get('escuela_id')}) {count} estudiantes."
+            if is_docente
+            else f"Se han importado y analizado exitosamente {count} estudiantes."
+        )
         return {
             "status": "ok",
-            "message": f"Se han importado y analizado exitosamente {count} estudiantes.",
+            "message": msg,
             "total_importados": count,
         }
     except Exception as exc:

@@ -36,7 +36,8 @@ SELECT
     necesidad_intervencion,
     indice_desanimo,
     factor_principal_riesgo,
-    recomendacion_pedagogica
+    recomendacion_pedagogica,
+    docente_tutor
 FROM alumnos_hack4edu;
 
 -- 2. VISTA DIRECTOR: Agregados por grado escolar y zona dentro del centro educativo

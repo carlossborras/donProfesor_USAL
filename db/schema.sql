@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS alumnos_hack4edu (
     indice_desanimo NUMERIC(5,2),
     factor_principal_riesgo VARCHAR(160),
     recomendacion_pedagogica TEXT,
-    fecha_prediccion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    fecha_prediccion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    docente_tutor VARCHAR(60)
 );
 
 -- Usuarios institucionales de la plataforma para autenticación JWT

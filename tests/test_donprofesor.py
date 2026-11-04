@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from fastapi.testclient import TestClient
 from api.main import app
+from db.adapter import db_adapter
 from db.import_csv import clear_alumnos_table, generate_sample_dataset
 from mcp_server.db_mcp_server import list_tables, describe_table, read_query
 
@@ -228,5 +229,90 @@ def test_student_manual_entry_and_paste_batch():
 
     # Limpiar tabla
     clear_alumnos_table()
+
+
+def test_teacher_group_assignment_and_scope_isolation():
+    clear_alumnos_table()
+
+    # 1. Login como docente de ESC-01, Grado 2
+    login_a = client.post(
+        "/api/auth/login",
+        json={"username": "docente", "password": "donprofesor2026"},
+    ).json()
+    token_a = login_a["access_token"]
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+
+    # Docente añade alumno intentando pasar otro grado por payload
+    resp_a = client.post(
+        "/api/datos/alumno",
+        headers=headers_a,
+        json={
+            "alumno_id": "ALU-GRUPO-A",
+            "escuela_id": "ESC-99",
+            "grado_secundaria": 5,
+            "sexo": "F",
+            "edad": 14,
+            "distancia_hogar_escuela_km": 3.0,
+            "faltas_trimestre_1": 2,
+            "faltas_trimestre_2": 4,
+            "nota_trimestre_1_0_20": 14.0,
+            "nota_trimestre_2_0_20": 13.0,
+        },
+    )
+    assert resp_a.status_code == 200
+    data_a = resp_a.json()
+    # Verifica que el backend forzó el grupo del docente
+    assert data_a["escuela_id"] == "ESC-01"
+    assert data_a["grado_secundaria"] == 2
+    assert data_a["docente_tutor"] == "docente"
+
+    # 2. Registrar otro docente (ESC-02, Grado 4)
+    import secrets
+    u_b = f"docente_{secrets.token_hex(4)}"
+    reg_b = client.post(
+        "/api/auth/register",
+        json={
+            "username": u_b,
+            "password": "Password123",
+            "nombre_completo": "Prof. Juan Pérez",
+            "rol": "docente",
+            "escuela_id": "ESC-02",
+            "grado_secundaria": 4,
+        },
+    )
+    assert reg_b.status_code == 201
+    token_b = reg_b.json()["access_token"]
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    # Docente B pega datos desde Excel sin especificar escuela ni grado
+    tsv_b = (
+        "alumno_id\tsexo\tedad\tdistancia_hogar_escuela_km\tfaltas_trimestre_1\tfaltas_trimestre_2\tnota_trimestre_1_0_20\tnota_trimestre_2_0_20\n"
+        "ALU-GRUPO-B1\tM\t16\t2.0\t1\t1\t15.0\t16.0\n"
+        "ALU-GRUPO-B2\tF\t16\t4.5\t5\t8\t11.0\t10.0\n"
+    )
+    resp_b = client.post("/api/datos/pegar", headers=headers_b, json={"data_text": tsv_b})
+    assert resp_b.status_code == 200
+
+    # Comprobar en base de datos que se asignaron a ESC-02, Grado 4 y docente_tutor = u_b
+    b_rows = db_adapter.fetch_all("SELECT alumno_id, escuela_id, grado_secundaria, docente_tutor FROM alumnos_hack4edu WHERE alumno_id LIKE 'ALU-GRUPO-B%'")
+    assert len(b_rows) == 2
+    for r in b_rows:
+        assert r["escuela_id"] == "ESC-02"
+        assert r["grado_secundaria"] == 4
+        assert r["docente_tutor"] == u_b
+
+    # 3. Comprobar aislamiento en los paneles:
+    # El docente A solo ve a ALU-GRUPO-A
+    panel_a = client.get("/api/dashboard", headers=headers_a).json()
+    assert panel_a["kpis"][0]["value"] == 1
+    assert [a["alumno_id"] for a in panel_a["tablas"]["alumnos"]] == ["ALU-GRUPO-A"]
+
+    # El docente B solo ve a sus 2 alumnos
+    panel_b = client.get("/api/dashboard", headers=headers_b).json()
+    assert panel_b["kpis"][0]["value"] == 2
+    assert sorted([a["alumno_id"] for a in panel_b["tablas"]["alumnos"]]) == ["ALU-GRUPO-B1", "ALU-GRUPO-B2"]
+
+    clear_alumnos_table()
+
 
 

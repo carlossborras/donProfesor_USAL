@@ -40,6 +40,13 @@ def init_and_seed_database(force_reset: bool = False) -> None:
 
     # Ejecutar esquema de tablas y vistas
     cur.executescript(SCHEMA_SQL.read_text(encoding="utf-8"))
+
+    # Migración idempotente para la columna docente_tutor si la tabla ya existía
+    try:
+        cur.execute("ALTER TABLE alumnos_hack4edu ADD COLUMN docente_tutor VARCHAR(60);")
+    except Exception:
+        pass
+
     cur.executescript(VIEWS_SQL.read_text(encoding="utf-8"))
 
     # Usuarios de demostración (contraseña: donprofesor2026), guardados con hash PBKDF2-SHA256.
