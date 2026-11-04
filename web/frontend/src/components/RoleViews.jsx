@@ -1,58 +1,61 @@
 import React, { useState, useEffect } from "react";
 import { runGrantSimulationApi } from "../services/api";
 
-export function DocenteContextTable({ alumnos = [] }) {
+export function DocenteContextTable({ alumnos = [], onLoadSample }) {
   const [filterMode, setFilterMode] = useState("todos");
 
   const filtered = alumnos.filter((a) => {
     if (filterMode === "distancia") return (a.distancia_hogar_escuela_km || 0) >= 3.0;
     if (filterMode === "trabajo") return (a.horas_trabajo_semanal || 0) > 0;
     if (filterMode === "juntos") return a.beneficiario_juntos === 1;
-    if (filterMode === "alerta") return a.necesidad_intervencion === "Alta" || a.necesidad_intervencion === "Media";
+    if (filterMode === "alerta")
+      return a.necesidad_intervencion === "Alta" || a.necesidad_intervencion === "Media";
     return true;
   });
 
   return (
-    <div className="panel-card">
-      <div className="panel-header">
+    <div>
+      <div className="calm-card-header">
         <div>
-          <h2>Seguimiento contextual de estudiantes (30 variables oficiales · Reto 13)</h2>
-          <p>
-            Muestra el contexto de desplazamiento, subsidio Juntos, dedicación laboral y calificaciones vigesimales (0-20) sin semáforos estigmatizantes.
+          <h2 className="calm-card-title">
+            Seguimiento contextual del grupo (30 variables oficiales + 7 predictivas)
+          </h2>
+          <p className="calm-card-sub">
+            Desplazamiento, subsidio Juntos, dedicación laboral y calificaciones vigesimales (0-20) sin semáforos estigmatizantes.
           </p>
         </div>
         <div className="filter-pills-row">
           <button
             type="button"
-            className={`btn-secondary ${filterMode === "todos" ? "active-filter" : ""}`}
+            className={`btn-outline-calm ${filterMode === "todos" ? "active-filter" : ""}`}
             onClick={() => setFilterMode("todos")}
           >
             Todos ({alumnos.length})
           </button>
           <button
             type="button"
-            className={`btn-secondary ${filterMode === "distancia" ? "active-filter" : ""}`}
+            className={`btn-outline-calm ${filterMode === "distancia" ? "active-filter" : ""}`}
             onClick={() => setFilterMode("distancia")}
           >
             Distancia &ge; 3 km
           </button>
           <button
             type="button"
-            className={`btn-secondary ${filterMode === "trabajo" ? "active-filter" : ""}`}
+            className={`btn-outline-calm ${filterMode === "trabajo" ? "active-filter" : ""}`}
             onClick={() => setFilterMode("trabajo")}
           >
             Trabajo semanal (&gt; 0 h)
           </button>
           <button
             type="button"
-            className={`btn-secondary ${filterMode === "juntos" ? "active-filter" : ""}`}
+            className={`btn-outline-calm ${filterMode === "juntos" ? "active-filter" : ""}`}
             onClick={() => setFilterMode("juntos")}
           >
             Programa Juntos
           </button>
           <button
             type="button"
-            className={`btn-secondary ${filterMode === "alerta" ? "active-filter" : ""}`}
+            className={`btn-outline-calm ${filterMode === "alerta" ? "active-filter" : ""}`}
             onClick={() => setFilterMode("alerta")}
           >
             Prioridad de apoyo
@@ -62,14 +65,18 @@ export function DocenteContextTable({ alumnos = [] }) {
 
       <div className="table-wrapper">
         {alumnos.length === 0 ? (
-          <div style={{ padding: "36px 20px", textAlign: "center", color: "#64748b" }}>
-            <h3 style={{ fontSize: "15px", color: "#334155", marginBottom: "6px" }}>Base de datos conectada · 0 estudiantes registrados</h3>
-            <p style={{ fontSize: "13px" }}>
-              La tabla <code>alumnos_hack4edu</code> está lista y limpia. En cuanto tu equipo entregue el archivo CSV o ejecute el modelo predictivo, aparecerán aquí todos los datos del aula.
+          <div style={{ padding: "32px 20px", textAlign: "center", color: "#5e6c65" }}>
+            <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "20px", color: "#1c2a24", marginBottom: "8px", fontWeight: 500 }}>
+              Base de datos conectada · 0 estudiantes registrados actualmente
+            </h3>
+            <p style={{ fontSize: "13.5px", maxWidth: "560px", margin: "0 auto 16px" }}>
+              La tabla <code>alumnos_hack4edu</code> está limpia. Puedes subir el archivo CSV del equipo o cargar ahora mismo 30 estudiantes de prueba para explorar las consultas SQL en vivo.
             </p>
-            <div style={{ marginTop: "12px", fontFamily: "monospace", fontSize: "12px", background: "#f1f5f9", display: "inline-block", padding: "6px 12px", borderRadius: "6px" }}>
-              Comando de carga: pixi run python db/import_csv.py --csv &lt;archivo.csv&gt;
-            </div>
+            {onLoadSample && (
+              <button type="button" className="btn-forest" onClick={onLoadSample}>
+                Cargar 30 estudiantes de prueba en la Base de Datos
+              </button>
+            )}
           </div>
         ) : (
           <table className="clean-table">
@@ -82,7 +89,7 @@ export function DocenteContextTable({ alumnos = [] }) {
                 <th>Asistencia (T1/T2)</th>
                 <th>Notas (0-20)</th>
                 <th>Proyección T3</th>
-                <th>Prioridad Modelo</th>
+                <th>Acompañamiento</th>
               </tr>
             </thead>
             <tbody>
@@ -95,7 +102,7 @@ export function DocenteContextTable({ alumnos = [] }) {
                   factores.push(`Trabajo: ${a.horas_trabajo_semanal}h/sem`);
                 }
                 if (a.internet_hogar === 0) {
-                  factores.push("Sin internet");
+                  factores.push("Sin internet en casa");
                 }
                 if (factores.length === 0) {
                   factores.push("Trayecto regular");
@@ -105,46 +112,61 @@ export function DocenteContextTable({ alumnos = [] }) {
                   <tr key={a.alumno_id}>
                     <td>
                       <strong>{a.alumno_id}</strong>
-                      <div style={{ fontSize: "11px", color: "#64748b" }}>{a.sexo === "M" ? "Varón" : "Mujer"}</div>
-                    </td>
-                    <td>{a.grado_secundaria}º Sec · {a.edad} años</td>
-                    <td>{factores.join(" · ")}</td>
-                    <td>
-                      {a.beneficiario_juntos === 1 ? (
-                        <span style={{ color: "#166534", fontWeight: 600 }}>Programa Juntos</span>
-                      ) : (
-                        <span style={{ color: "#64748b" }}>Sin subsidio</span>
-                      )}
-                    </td>
-                    <td>
-                      <div><strong>{a.asistencia_pct_calculada || 0}%</strong></div>
-                      <div style={{ fontSize: "11px", color: "#64748b" }}>
-                        Faltas: {a.faltas_totales_calculadas || 0} ({a.faltas_trimestre_1 || 0} T1 / {a.faltas_trimestre_2 || 0} T2)
+                      <div style={{ fontSize: "11px", color: "#6b7871" }}>
+                        {a.sexo === "M" ? "Varón" : "Mujer"}
                       </div>
                     </td>
                     <td>
-                      <div><strong>{a.promedio_notas_calculado || 0}</strong> / 20</div>
-                      <div style={{ fontSize: "11px", color: "#64748b" }}>
-                        T1: {a.nota_trimestre_1_0_20 || "-"} · T2: {a.nota_trimestre_2_0_20 || "-"}
+                      {a.grado_secundaria}° Sec · {a.edad} años
+                    </td>
+                    <td>{factores.join(" · ")}</td>
+                    <td>
+                      {a.beneficiario_juntos === 1 ? (
+                        <span style={{ color: "#1f6351", fontWeight: 600 }}>Programa Juntos</span>
+                      ) : (
+                        <span style={{ color: "#6b7871" }}>Sin subsidio</span>
+                      )}
+                    </td>
+                    <td>
+                      <div>
+                        <strong>{a.asistencia_pct_calculada || 0}%</strong>
+                      </div>
+                      <div style={{ fontSize: "11px", color: "#6b7871" }}>
+                        Faltas: {a.faltas_totales_calculadas || 0} ({a.faltas_trimestre_1 || 0} T1 /{" "}
+                        {a.faltas_trimestre_2 || 0} T2)
+                      </div>
+                    </td>
+                    <td>
+                      <div>
+                        <strong>{a.promedio_notas_calculado || 0}</strong> / 20
+                      </div>
+                      <div style={{ fontSize: "11px", color: "#6b7871" }}>
+                        T1: {a.nota_trimestre_1_0_20 ?? "-"} · T2: {a.nota_trimestre_2_0_20 ?? "-"}
                       </div>
                     </td>
                     <td>
                       {a.prediccion_nota_t3 ? (
                         <div>
-                          <div>Nota: <strong>{a.prediccion_nota_t3}</strong>/20</div>
-                          <div style={{ fontSize: "11px", color: "#64748b" }}>Faltas: ~{a.prediccion_faltas_t3 || 0}d</div>
+                          <div>
+                            Nota: <strong>{a.prediccion_nota_t3}</strong>/20
+                          </div>
+                          <div style={{ fontSize: "11px", color: "#6b7871" }}>
+                            Faltas est.: ~{a.prediccion_faltas_t3 || 0}d
+                          </div>
                         </div>
                       ) : (
-                        <span style={{ color: "#94a3b8" }}>Pendiente</span>
+                        <span style={{ color: "#6b7871" }}>Pendiente</span>
                       )}
                     </td>
                     <td>
                       {a.necesidad_intervencion ? (
                         <span className="tag-context">
-                          {a.necesidad_intervencion === "Alta" ? "Revisar esta semana" : "Seguimiento"}
+                          {a.necesidad_intervencion === "Alta"
+                            ? "Para revisar esta semana"
+                            : "Seguimiento cercano"}
                         </span>
                       ) : (
-                        <span style={{ color: "#94a3b8", fontSize: "12px" }}>Ordinaria</span>
+                        <span style={{ color: "#6b7871", fontSize: "12px" }}>Continuidad regular</span>
                       )}
                     </td>
                   </tr>
@@ -158,23 +180,32 @@ export function DocenteContextTable({ alumnos = [] }) {
   );
 }
 
-export function DirectorGroupsTable({ grupos = [] }) {
+export function DirectorGroupsTable({ grupos = [], onLoadSample }) {
   return (
-    <div className="panel-card">
-      <div className="panel-header">
+    <div>
+      <div className="calm-card-header">
         <div>
-          <h2>Consolidado por grados del centro educativo (Escala 0-20 y Reto 13)</h2>
-          <p>
-            Muestra el promedio de notas, porcentaje de asistencia acumulada y alumnos con alerta de prioridad alta calculados en tiempo real.
+          <h2 className="calm-card-title">
+            Consolidado por grados del centro educativo (Escala 0-20)
+          </h2>
+          <p className="calm-card-sub">
+            Promedio de notas, asistencia acumulada y prioridades de acompañamiento calculados mediante SQL en <code>vista_director</code>.
           </p>
         </div>
-        <span className="badge-neutral">Vista SQL: vista_director</span>
+        <span className="tag-context">Vista SQL: vista_director</span>
       </div>
 
       <div className="table-wrapper">
         {grupos.length === 0 ? (
-          <div style={{ padding: "30px 20px", textAlign: "center", color: "#64748b" }}>
-            Base de datos conectada. Esperando carga de alumnos para calcular los consolidados por grado escolar.
+          <div style={{ padding: "30px 20px", textAlign: "center", color: "#5e6c65" }}>
+            <p style={{ marginBottom: "14px" }}>
+              Base de datos conectada (0 registros). Carga datos de prueba o sube el archivo CSV para ver las cohortes del centro.
+            </p>
+            {onLoadSample && (
+              <button type="button" className="btn-forest" onClick={onLoadSample}>
+                Cargar 30 estudiantes de prueba
+              </button>
+            )}
           </div>
         ) : (
           <table className="clean-table">
@@ -185,8 +216,8 @@ export function DirectorGroupsTable({ grupos = [] }) {
                 <th>Asistencia Media</th>
                 <th>Promedio Notas (0-20)</th>
                 <th>Conectividad Hogar</th>
-                <th>Horas Estudio Semanal</th>
-                <th>Casos Prioridad Alta</th>
+                <th>Estudio Semanal</th>
+                <th>Para Revisar</th>
               </tr>
             </thead>
             <tbody>
@@ -196,15 +227,19 @@ export function DirectorGroupsTable({ grupos = [] }) {
                     <strong>{g.nombre_grupo}</strong>
                   </td>
                   <td>{g.num_estudiantes} est.</td>
-                  <td><strong>{g.asistencia_media_pct}%</strong></td>
-                  <td><strong>{g.participacion_aula_pct || g.promedio_notas || 0}</strong> / 20</td>
+                  <td>
+                    <strong>{g.asistencia_media_pct}%</strong>
+                  </td>
+                  <td>
+                    <strong>{g.participacion_aula_pct || g.promedio_notas || 0}</strong> / 20
+                  </td>
                   <td>{g.uso_recursos_aula_pct || 0}% con internet</td>
                   <td>{g.horas_formacion_docente || 0} h/sem</td>
                   <td>
                     {g.vinculo_familiar_pct > 0 ? (
-                      <span style={{ color: "#991b1b", fontWeight: 700 }}>{g.vinculo_familiar_pct} alertas</span>
+                      <span className="tag-context">{g.vinculo_familiar_pct} casos</span>
                     ) : (
-                      <span style={{ color: "#166534" }}>0 alertas</span>
+                      <span style={{ color: "#1f6351" }}>Estable</span>
                     )}
                   </td>
                 </tr>
@@ -217,7 +252,7 @@ export function DirectorGroupsTable({ grupos = [] }) {
   );
 }
 
-export function DelegadoTerritorialView({ escuelas = [], token }) {
+export function DelegadoTerritorialView({ escuelas = [], token, onLoadSample }) {
   const [budget, setBudget] = useState(120000);
   const [becasPct, setBecasPct] = useState(45);
   const [formacionPct, setFormacionPct] = useState(35);
@@ -245,18 +280,20 @@ export function DelegadoTerritorialView({ escuelas = [], token }) {
 
   return (
     <>
-      <div className="panel-card">
-        <div className="panel-header">
+      <div className="calm-card">
+        <div className="calm-card-header">
           <div>
-            <h2>Simulador presupuestario territorial (Focalización rural y Programa Juntos)</h2>
-            <p>
-              Calcula sobre los datos reales de la BD el impacto de destinar recursos a transporte rural, refuerzo escolar y recursos sin conexión.
+            <h2 className="calm-card-title">
+              Simulador presupuestario territorial (Transporte rural y Programa Juntos)
+            </h2>
+            <p className="calm-card-sub">
+              Estima sobre los registros de la BD el impacto de destinar recursos a transporte escolar, acompañamiento docente y servidores sin conexión.
             </p>
           </div>
-          <span className="badge-neutral">Vista SQL: vista_delegado</span>
+          <span className="tag-context">Vista SQL: vista_delegado</span>
         </div>
 
-        <div className="chart-box">
+        <div>
           <div className="sim-grid">
             <div className="sim-control">
               <label htmlFor="sim-budget">
@@ -290,7 +327,9 @@ export function DelegadoTerritorialView({ escuelas = [], token }) {
 
             <div className="sim-control">
               <label htmlFor="sim-formacion">
-                <strong>% Refuerzo pedagógico: {formacionPct}% ({offlinePct}% offline)</strong>
+                <strong>
+                  % Refuerzo pedagógico: {formacionPct}% ({offlinePct}% offline)
+                </strong>
               </label>
               <input
                 id="sim-formacion"
@@ -305,27 +344,34 @@ export function DelegadoTerritorialView({ escuelas = [], token }) {
           </div>
 
           <div className="sim-output">
-            <strong>Proyección sobre datos reales: </strong>
+            <strong>Proyección sobre la base de datos: </strong>
             {simResult ? simResult.lectura_humanizada : "Calculando..."}
           </div>
         </div>
       </div>
 
-      <div className="panel-card">
-        <div className="panel-header">
+      <div className="calm-card">
+        <div className="calm-card-header">
           <div>
-            <h2>Red de centros educativos en UGEL (Rural vs Urbano)</h2>
-            <p>
-              Información territorial para asignación equitativa de recursos y seguimiento de brechas de acceso.
+            <h2 className="calm-card-title">Red de centros educativos en UGEL (Rural vs Urbano)</h2>
+            <p className="calm-card-sub">
+              Comparativa territorial de asistencia, conectividad doméstica y distancia media de desplazamiento.
             </p>
           </div>
-          <span className="badge-neutral">Vista SQL: vista_delegado</span>
+          <span className="tag-context">Vista SQL: vista_delegado</span>
         </div>
 
         <div className="table-wrapper">
           {escuelas.length === 0 ? (
-            <div style={{ padding: "30px 20px", textAlign: "center", color: "#64748b" }}>
-              Base de datos conectada. Esperando carga de datos territoriales de la UGEL.
+            <div style={{ padding: "30px 20px", textAlign: "center", color: "#5e6c65" }}>
+              <p style={{ marginBottom: "14px" }}>
+                Base de datos conectada (0 registros). Carga los 30 estudiantes de prueba o sube un archivo CSV para ver las escuelas de la red.
+              </p>
+              {onLoadSample && (
+                <button type="button" className="btn-forest" onClick={onLoadSample}>
+                  Cargar 30 estudiantes de prueba
+                </button>
+              )}
             </div>
           ) : (
             <table className="clean-table">
@@ -337,7 +383,7 @@ export function DelegadoTerritorialView({ escuelas = [], token }) {
                   <th>Distancia Media</th>
                   <th>Asistencia Media</th>
                   <th>Promedio Notas (0-20)</th>
-                  <th>Alertas Prioritarias</th>
+                  <th>Casos Para Revisar</th>
                 </tr>
               </thead>
               <tbody>
@@ -349,11 +395,13 @@ export function DelegadoTerritorialView({ escuelas = [], token }) {
                     <td>{e.zona}</td>
                     <td>{e.conectividad_pct}%</td>
                     <td>{e.brecha_uso_equipamiento_pct || 0} km</td>
-                    <td><strong>{e.asistencia_media_pct}%</strong></td>
+                    <td>
+                      <strong>{e.asistencia_media_pct}%</strong>
+                    </td>
                     <td>{e.aprendizaje_medio_pts || 0} / 20</td>
                     <td>
                       {e.horas_formacion_docente_media > 0 ? (
-                        <span style={{ color: "#991b1b", fontWeight: 700 }}>{e.horas_formacion_docente_media}</span>
+                        <span className="tag-context">{e.horas_formacion_docente_media}</span>
                       ) : (
                         "0"
                       )}

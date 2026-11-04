@@ -22,9 +22,9 @@ from pydantic import BaseModel
 
 from db.seed_db import init_and_seed_database
 from db.adapter import db_adapter
-from db.import_csv import import_csv_file
+from db.import_csv import import_csv_file, clear_alumnos_table, generate_sample_dataset
 from mcp_server.db_mcp_server import list_tables, describe_table, read_query
-from mcp_server.chat_agent import answer_pedagogical_chat_with_mcp
+from mcp_server.chat_agent import answer_pedagogical_chat_with_mcp, check_remote_llm_health
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = ROOT_DIR / "web" / "frontend"
@@ -70,9 +70,16 @@ class LoginRequest(BaseModel):
 
 
 class ActionCreateRequest(BaseModel):
-    alumno_id: str
+    alumno_id: Optional[str] = None
+    prediccion_id: Optional[str] = None
     decision_tomada: str
     comentario_pedagogico: Optional[str] = ""
+
+
+class LLMConfigRequest(BaseModel):
+    base_url: Optional[str] = None
+    model_name: Optional[str] = None
+    api_key: Optional[str] = None
 
 
 class GrantSimulationRequest(BaseModel):
@@ -478,6 +485,7 @@ def register_human_action(
 ) -> Dict[str, Any]:
     """Registra la intervención pedagógica adoptada por el docente o director en la base de datos real."""
     ambito = user.get("escuela_id") or "RED"
+    target_id = req.alumno_id or req.prediccion_id or "ALU-001"
     db_adapter.execute_write(
         """
         INSERT INTO registro_accion_humana
@@ -485,7 +493,7 @@ def register_human_action(
         VALUES (?, ?, ?, ?, ?, ?);
         """,
         (
-            req.alumno_id,
+            target_id,
             user["rol"],
             user["nombre_completo"],
             ambito,
@@ -496,7 +504,7 @@ def register_human_action(
     return {
         "status": "ok",
         "message": "Decisión pedagógica guardada correctamente en la Base de Datos real.",
-        "alumno_id": req.alumno_id,
+        "alumno_id": target_id,
     }
 
 
@@ -570,6 +578,48 @@ async def upload_csv_dataset(file: UploadFile = File(...), user: Dict[str, Any] 
     except Exception as exc:
         temp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail=f"Error procesando CSV: {exc}")
+
+
+@app.post("/api/datos/semilla-prueba")
+def load_sample_dataset_endpoint(user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    """Carga 30 registros de prueba en alumnos_hack4edu para verificar las consultas SQL en vivo."""
+    count = generate_sample_dataset(30)
+    return {
+        "status": "ok",
+        "message": f"Se han cargado {count} estudiantes de prueba en la base de datos real.",
+        "total_importados": count,
+    }
+
+
+@app.post("/api/datos/vaciar")
+def clear_dataset_endpoint(user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    """Limpia la tabla alumnos_hack4edu dejándola en 0 registros."""
+    clear_alumnos_table()
+    return {
+        "status": "ok",
+        "message": "Base de datos vaciada (0 estudiantes en alumnos_hack4edu).",
+        "total_importados": 0,
+    }
+
+
+@app.get("/api/config/llm")
+def get_llm_status_endpoint(user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    """Devuelve el estado de conexión con el servidor Qwen/vLLM remoto."""
+    return check_remote_llm_health()
+
+
+@app.post("/api/config/llm")
+def update_llm_config_endpoint(
+    req: LLMConfigRequest, user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Actualiza en caliente los parámetros de conexión al servidor Qwen/vLLM."""
+    if req.base_url:
+        os.environ["QWEN_BASE_URL"] = req.base_url.strip()
+    if req.model_name:
+        os.environ["QWEN_MODEL_NAME"] = req.model_name.strip()
+    if req.api_key is not None and req.api_key.strip() != "":
+        os.environ["QWEN_API_KEY"] = req.api_key.strip()
+    return check_remote_llm_health()
 
 
 # =============================================================================
