@@ -14,8 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
-import jwt
-from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -25,6 +24,9 @@ from db.adapter import db_adapter
 from db.import_csv import import_csv_file, clear_alumnos_table, generate_sample_dataset
 from mcp_server.db_mcp_server import list_tables, describe_table, read_query
 from mcp_server.chat_agent import answer_pedagogical_chat_with_mcp, check_remote_llm_health
+from api.security import get_current_user
+from api.auth import router as auth_router
+from api.dashboards import router as dashboard_router
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = ROOT_DIR / "web" / "frontend"
@@ -38,8 +40,7 @@ if _env_path.exists():
             _k, _v = _line.split("=", 1)
             os.environ.setdefault(_k.strip(), _v.strip())
 
-JWT_SECRET = os.environ.get("DONPROFESOR_JWT_SECRET", "hack4edu-donprofesor-secret-key-2026")
-JWT_ALG = "HS256"
+# El secreto JWT, el registro y el login viven en api/security.py y api/auth.py
 
 
 @asynccontextmanager
@@ -63,10 +64,9 @@ if (FRONTEND_DIR / "dist" / "assets").exists():
 if (FRONTEND_DIR / "src").exists():
     app.mount("/src", StaticFiles(directory=str(FRONTEND_DIR / "src")), name="react_src")
 
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str = "donprofesor2026"
+# Registro, inicio de sesión y paneles con gráficos por rol
+app.include_router(auth_router)
+app.include_router(dashboard_router)
 
 
 class ActionCreateRequest(BaseModel):
@@ -97,35 +97,6 @@ class DirectMCPQueryRequest(BaseModel):
     sql_query: str
 
 
-def create_jwt_token(user_row: Dict[str, Any]) -> str:
-    payload = {
-        "sub": user_row["username"],
-        "nombre_completo": user_row["nombre_completo"],
-        "rol": user_row["rol"],
-        "escuela_id": user_row.get("escuela_id"),
-        "grado_secundaria": user_row.get("grado_secundaria"),
-        "ugel": user_row.get("ugel"),
-        "titulo_cargo": user_row.get("titulo_cargo"),
-        "db_role": f"role_{user_row['rol']}",
-        "exp": datetime.now(timezone.utc) + timedelta(hours=12),
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
-
-
-def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401,
-            detail="Token JWT requerido. Inicia sesión con /api/auth/login.",
-        )
-    token = authorization.split(" ", 1)[1].strip()
-    try:
-        decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
-        return decoded
-    except Exception as exc:
-        raise HTTPException(status_code=401, detail=f"Token JWT inválido o expirado: {exc}")
-
-
 @app.get("/api/db-status")
 def get_database_status() -> Dict[str, Any]:
     """Devuelve el estado real de la base de datos y el conteo exacto de registros en `alumnos_hack4edu`."""
@@ -150,35 +121,6 @@ def get_database_status() -> Dict[str, Any]:
         ),
     })
     return status
-
-
-@app.post("/api/auth/login")
-def login_endpoint(req: LoginRequest) -> Dict[str, Any]:
-    row = db_adapter.fetch_one(
-        "SELECT * FROM usuario_plataforma WHERE username = ? AND password_hash = ?;",
-        (req.username.lower().strip(), req.password),
-    )
-    if not row:
-        raise HTTPException(
-            status_code=401,
-            detail="Credenciales incorrectas. Usuarios disponibles: docente, director, delegado (clave: donprofesor2026).",
-        )
-    token = create_jwt_token(row)
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "user": {
-            "username": row["username"],
-            "nombre_completo": row["nombre_completo"],
-            "rol": row["rol"],
-            "db_role": f"role_{row['rol']}",
-            "escuela_id": row["escuela_id"],
-            "grado_secundaria": row["grado_secundaria"],
-            "ugel": row["ugel"],
-            "titulo_cargo": row["titulo_cargo"],
-        },
-        "db_status": get_database_status(),
-    }
 
 
 @app.get("/api/panel")

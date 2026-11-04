@@ -54,7 +54,7 @@ def get_llm_config() -> Dict[str, str]:
     api_key = (
         os.environ.get("QWEN_API_KEY")
         or os.environ.get("LLM_API_KEY")
-        or "3531cd03870e3dac8260681dd38d4fbd6f2b5920f4624b9a749ddc07651f2dad"
+        or ""  # La clave va SOLO en .env (QWEN_API_KEY); nunca en el código
     ).strip()
 
     return {

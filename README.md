@@ -27,6 +27,41 @@ Abre tu navegador en `http://localhost:8000` (o `http://127.0.0.1:8000`).
 
 ---
 
+## Acceso con cuenta y vistas por rol (login y registro)
+
+Al abrir `http://localhost:8000` aparece la pantalla de **Iniciar sesión / Crear cuenta**. Cada persona ve solo la vista de su rol y los datos de su ámbito, que se fija al registrarse y viaja dentro del token:
+
+| Rol | Ámbito que pide el registro | Qué ve en «Cómo vamos» |
+|---|---|---|
+| **Docente** | Escuela + grado (1.º–5.º) | Su grupo alumno a alumno (ordenado por código, sin rankings): notas por trimestre, faltas, reparto de asistencia y de notas, asistencia frente a distancia, contexto (trabajo, internet, distancia, Juntos) y «Sugerir revisión» con factores explicados. **Nunca** probabilidades ni etiquetas de riesgo. |
+| **Director/a** | Escuela | Su escuela agregada por grado: asistencia, notas T1→T2, faltas T1→T2 (efecto cosecha), sugerencias de revisión e internet en casa. |
+| **Delegado/a UGEL** | UGEL | Sus escuelas: asistencia, internet en casa con umbral de brecha, comparativa rural/urbana, sugerencias por escuela y lista de escuelas con brechas. |
+
+Reglas de privacidad aplicadas en el servidor: consultas parametrizadas y filtradas por el ámbito del token, y **k-anonimato (k ≥ 5)** en los datos agregados (los grados o escuelas con menos de 5 estudiantes se ocultan). Con la base de datos vacía, los paneles muestran ceros y un aviso; no se inventan datos.
+
+**Usuarios de demostración** (se siguen creando al iniciar): `docente`, `director`, `delegado` con contraseña `donprofesor2026`.
+
+**Endpoints**
+
+| Método y ruta | Acceso | Uso |
+|---|---|---|
+| `POST /api/auth/register` | público | Crea la cuenta (rol + ámbito) y devuelve la sesión (201). 409 si el usuario existe, 422 si faltan datos |
+| `POST /api/auth/login` | público | `{access_token, token_type, expires_in, user}`; 401 genérico si falla |
+| `GET /api/auth/me` | con sesión | Usuario actual (la web lo usa para validar la sesión al recargar) |
+| `GET /api/auth/opciones-registro` | público | Roles, escuelas/UGEL conocidas y si cada rol pide código de invitación |
+| `GET /api/dashboard` | con sesión | Panel con gráficos del rol de la sesión |
+| `GET /api/dashboard/{rol}` | con sesión | Igual, pero **403** si `{rol}` no es el tuyo |
+
+**Seguridad**
+- Contraseñas con **PBKDF2-SHA256 (600 000 iteraciones)**, solo librería estándar. Las cuentas antiguas en texto plano se re-cifran solas al entrar.
+- Tokens JWT de **8 horas** (`DONPROFESOR_JWT_EXPIRE_HOURS`). Define `DONPROFESOR_JWT_SECRET` (mín. 32 caracteres) en `.env`; si falta, la API usa uno temporal y las sesiones caducan al reiniciar.
+- Registro con **código de invitación opcional por rol**: `DONPROFESOR_CODIGO_REGISTRO_DOCENTE`, `..._DIRECTOR`, `..._DELEGADO`. Recomendado para director y delegado.
+- La sesión del navegador se guarda en `sessionStorage` (se borra al cerrar la pestaña).
+
+Pruebas: `pixi run test` (incluye `tests/test_auth_dashboards.py`, que usa una base de datos temporal y no toca `db/donprofesor.db`).
+
+> Tras cambiar el frontend hay que recompilarlo: `pixi run build` (lo hace solo `pixi run start`).
+
 ## Arquitectura de 3 Componentes Integrados
 
 ### 1. Base de Datos Relacional y API (FastAPI + SQLite / PostgreSQL)
