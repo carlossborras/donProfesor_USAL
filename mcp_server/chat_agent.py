@@ -82,7 +82,7 @@ def create_langgraph_react_agent_for_session(
         api_key=api_key,
         model=model_name,
         temperature=0.1,
-        timeout=15.0,
+        timeout=5.0,
     )
 
     agent_graph = create_react_agent(
@@ -145,7 +145,20 @@ def answer_pedagogical_chat_with_mcp(
         }
 
     # 3. Intentar ejecución con Agente ReAct de LangGraph si Qwen está configurado
-    qwen_base_url = os.environ.get("QWEN_BASE_URL") or os.environ.get("LLM_BASE_URL")
+    raw_url = (
+        os.environ.get("QWEN_BASE_URL")
+        or os.environ.get("LLM_BASE_URL")
+        or "http://172.25.144.238:8001/v1"
+    )
+    if raw_url:
+        raw_url = raw_url.rstrip("/")
+        if not raw_url.endswith("/v1"):
+            qwen_base_url = f"{raw_url}/v1"
+        else:
+            qwen_base_url = raw_url
+    else:
+        qwen_base_url = ""
+
     qwen_model = (
         os.environ.get("QWEN_MODEL_NAME")
         or os.environ.get("LLM_MODEL_NAME")

@@ -26,11 +26,20 @@ from db.import_csv import import_csv_file
 from mcp_server.db_mcp_server import list_tables, describe_table, read_query
 from mcp_server.chat_agent import answer_pedagogical_chat_with_mcp
 
-JWT_SECRET = os.environ.get("DONPROFESOR_JWT_SECRET", "hack4edu-donprofesor-secret-key-2026")
-JWT_ALG = "HS256"
-
 ROOT_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = ROOT_DIR / "web" / "frontend"
+
+# Cargar automáticamente variables de entorno desde .env si existe
+_env_path = ROOT_DIR / ".env"
+if _env_path.exists():
+    for _line in _env_path.read_text(encoding="utf-8").splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1)
+            os.environ.setdefault(_k.strip(), _v.strip())
+
+JWT_SECRET = os.environ.get("DONPROFESOR_JWT_SECRET", "hack4edu-donprofesor-secret-key-2026")
+JWT_ALG = "HS256"
 
 
 @asynccontextmanager
