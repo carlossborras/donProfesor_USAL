@@ -1,5 +1,0 @@
-- Simular los datos
-- Entrenar el modelo
-- Integrar el modelo como backend
-- Desarrollar el frontend
-- Desarrollar un LM
