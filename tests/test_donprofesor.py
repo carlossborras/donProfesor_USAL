@@ -97,7 +97,7 @@ def test_modular_react_frontend_served_and_web_app_imports():
     # 1. Verificar que la raíz sirve el entry point de React y que los componentes modulares existen
     root_resp = client.get("/")
     assert root_resp.status_code == 200
-    assert "bootModularReactApp" in root_resp.text
+    assert "root" in root_resp.text
 
     for component_path in [
         "/src/App.jsx",

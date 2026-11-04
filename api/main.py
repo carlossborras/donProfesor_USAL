@@ -57,6 +57,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+if (FRONTEND_DIR / "dist" / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR / "dist" / "assets")), name="react_assets")
 if (FRONTEND_DIR / "src").exists():
     app.mount("/src", StaticFiles(directory=str(FRONTEND_DIR / "src")), name="react_src")
 

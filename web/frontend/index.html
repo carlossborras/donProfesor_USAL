@@ -4,81 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DONPROFESOR · Analítica Educativa y Acompañamiento Humano (#Hack4Edu)</title>
-    <link rel="stylesheet" href="/src/styles/app.css" />
   </head>
   <body>
     <div id="root"></div>
-
-    <!--
-      Aplicación React Modular (web/frontend/src/components/*.jsx).
-      Funciona tanto con Vite (npm run dev / npm run build) como servida directamente
-      por FastAPI (uv run python web/app.py) sin requerir compilación previa.
-    -->
-    <script type="importmap">
-      {
-        "imports": {
-          "react": "https://esm.sh/react@18.3.1",
-          "react-dom/client": "https://esm.sh/react-dom@18.3.1/client"
-        }
-      }
-    </script>
-    <script src="https://unpkg.com/@babel/standalone@7.26.9/babel.min.js"></script>
-    <script>
-      (async function bootModularReactApp() {
-        const moduleFiles = [
-          "/src/services/api.js",
-          "/src/components/EthicalBanner.jsx",
-          "/src/components/Navbar.jsx",
-          "/src/components/KpiGrid.jsx",
-          "/src/components/PredictiveAlertsPanel.jsx",
-          "/src/components/RainHarvestChart.jsx",
-          "/src/components/RoleViews.jsx",
-          "/src/components/McpChatSidebar.jsx",
-          "/src/components/Modals.jsx",
-          "/src/App.jsx"
-        ];
-
-        const blobUrls = {};
-        for (const path of moduleFiles) {
-          const res = await fetch(path);
-          let source = await res.text();
-
-          for (const [origPath, blobUrl] of Object.entries(blobUrls)) {
-            const fileName = origPath.split("/").pop();
-            const baseName = fileName.replace(/\.(jsx|js)$/, "");
-            source = source
-              .replaceAll(`../services/${fileName}`, blobUrl)
-              .replaceAll(`../services/${baseName}`, blobUrl)
-              .replaceAll(`./services/${fileName}`, blobUrl)
-              .replaceAll(`./services/${baseName}`, blobUrl)
-              .replaceAll(`./components/${fileName}`, blobUrl)
-              .replaceAll(`./components/${baseName}`, blobUrl)
-              .replaceAll(`./${fileName}`, blobUrl)
-              .replaceAll(`./${baseName}`, blobUrl);
-          }
-
-          const compiled = Babel.transform(source, {
-            presets: ["react"],
-            filename: path
-          }).code;
-
-          const blob = new Blob([compiled], { type: "application/javascript" });
-          blobUrls[path] = URL.createObjectURL(blob);
-        }
-
-        const entryCode = `
-          import React from "react";
-          import { createRoot } from "react-dom/client";
-          import { App } from "${blobUrls["/src/App.jsx"]}";
-          const root = createRoot(document.getElementById("root"));
-          root.render(React.createElement(App));
-        `;
-        const entryBlob = new Blob([entryCode], { type: "application/javascript" });
-        const script = document.createElement("script");
-        script.type = "module";
-        script.src = URL.createObjectURL(entryBlob);
-        document.body.appendChild(script);
-      })();
-    </script>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
