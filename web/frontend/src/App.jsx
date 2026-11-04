@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   fetchDashboardPanel,
   fetchMcpMetadata,
@@ -55,24 +55,35 @@ const CHAT_PRESETS = {
 function mapDbAlertToPista(item, index) {
   const code = item.codigo_seguimiento || item.alumno_id || item.prediccion_id || `ALU-${index + 1}`;
   const factors = [];
-  if (item.factor_principal_riesgo || item.factor_1_texto) {
-    factors.push({
-      label: item.factor_principal_riesgo || item.factor_1_texto,
-      pct: Number(item.factor_1_peso) || 45,
-    });
+
+  if (Array.isArray(item.factores) && item.factores.length > 0) {
+    for (const f of item.factores) {
+      factors.push({
+        label: f.texto || f.label,
+        pct: Math.round(Number(f.peso ?? f.pct) || 0),
+      });
+    }
+  } else {
+    if (item.factor_principal_riesgo || item.factor_1_texto) {
+      factors.push({
+        label: item.factor_principal_riesgo || item.factor_1_texto,
+        pct: Math.round(Number(item.factor_1_peso) || 0),
+      });
+    }
+    if (item.factor_2_texto) {
+      factors.push({
+        label: item.factor_2_texto,
+        pct: Math.round(Number(item.factor_2_peso) || 0),
+      });
+    }
+    if (item.factor_3_texto) {
+      factors.push({
+        label: item.factor_3_texto,
+        pct: Math.round(Number(item.factor_3_peso) || 0),
+      });
+    }
   }
-  if (item.factor_2_texto) {
-    factors.push({
-      label: item.factor_2_texto,
-      pct: Number(item.factor_2_peso) || 35,
-    });
-  }
-  if (item.factor_3_texto) {
-    factors.push({
-      label: item.factor_3_texto,
-      pct: Number(item.factor_3_peso) || 20,
-    });
-  }
+
   if (factors.length === 0) {
     factors.push({
       label: "Asistencia o rendimiento que requiere atención pedagógica",
@@ -185,17 +196,19 @@ export function App({ session, onLogout }) {
   }, [loadRoleData]);
 
   // Construir lista de alertas exclusivamente de la base de datos real
-  const dbAlerts = panelData?.avisos_predictivos || [];
-  const activePistas = dbAlerts.slice(0, 8).map(mapDbAlertToPista);
+  const activePistas = useMemo(() => {
+    const dbAlerts = panelData?.avisos_predictivos || [];
+    return dbAlerts.slice(0, 8).map(mapDbAlertToPista);
+  }, [panelData?.avisos_predictivos]);
 
   const currentPista = activePistas[selectedPistaIdx] || activePistas[0] || null;
 
   useEffect(() => {
     if (currentPista) {
-      setDecisionText(currentPista.defaultDecision);
+      setDecisionText(currentPista.defaultDecision || "");
       setCommentText("");
     }
-  }, [currentPista]);
+  }, [currentPista?.id]);
 
   const handleSaveAccompaniment = async (e) => {
     e.preventDefault();
@@ -776,21 +789,22 @@ export function App({ session, onLogout }) {
                           value={decisionText}
                           onChange={(e) => setDecisionText(e.target.value)}
                         >
-                          <option value={currentPista.defaultDecision}>
-                            {currentPista.defaultDecision}
-                          </option>
-                          <option value="Conversación cercana con la familia y entrega de guía impresa">
-                            Conversación cercana con la familia y entrega de guía impresa
-                          </option>
-                          <option value="Flexibilización de entregas en semanas de lluvia o cosecha">
-                            Flexibilización de entregas en semanas de lluvia o cosecha
-                          </option>
-                          <option value="Reserva de equipamiento sin conexión para refuerzo en aula">
-                            Reserva de equipamiento sin conexión para refuerzo en aula
-                          </option>
-                          <option value="Descartar pista tras contrastar el contexto directo en el aula">
-                            Descartar pista tras contrastar el contexto directo en el aula
-                          </option>
+                          {Array.from(
+                            new Set(
+                              [
+                                currentPista.defaultDecision,
+                                "Conversación cercana con la familia y entrega de guía impresa",
+                                "Flexibilización de entregas en semanas de lluvia o cosecha",
+                                "Reserva de equipamiento sin conexión para refuerzo en aula",
+                                "Refuerzo académico en grupos pequeños y tutoría individual",
+                                "Descartar pista tras contrastar el contexto directo en el aula",
+                              ].filter(Boolean)
+                            )
+                          ).map((op) => (
+                            <option key={op} value={op}>
+                              {op}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
@@ -799,7 +813,7 @@ export function App({ session, onLogout }) {
                         <textarea
                           id="notes-acomp"
                           className="form-textarea"
-                          rows={2}
+                          rows={3}
                           placeholder="Escribe aquí lo que has hablado con el estudiante o su familia..."
                           value={commentText}
                           onChange={(e) => setCommentText(e.target.value)}

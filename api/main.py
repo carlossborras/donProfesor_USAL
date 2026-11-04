@@ -173,26 +173,88 @@ def get_role_dashboard_panel(user: Dict[str, Any] = Depends(get_current_user)) -
 
     # 1. Avisos predictivos reales (casos con necesidad_intervencion no nula)
     sql_avisos = """
-        SELECT alumno_id, escuela_id, grado_secundaria, necesidad_intervencion,
-               prob_abandono_pct, prediccion_nota_t3, prediccion_faltas_t3,
-               prob_perdida_beca_pct, prob_repeticion_pct, indice_desanimo,
-               factor_principal_riesgo, recomendacion_pedagogica, fecha_prediccion
-        FROM vista_avisos_predictivos
+        SELECT a.alumno_id, a.escuela_id, a.grado_secundaria, a.necesidad_intervencion,
+               a.prob_abandono_pct, a.prediccion_nota_t3, a.prediccion_faltas_t3,
+               a.prob_perdida_beca_pct, a.prob_repeticion_pct, a.indice_desanimo,
+               a.factor_principal_riesgo, a.recomendacion_pedagogica, a.fecha_prediccion,
+               a.distancia_hogar_escuela_km, a.horas_trabajo_semanal, a.internet_hogar,
+               a.beneficiario_juntos, a.faltas_trimestre_1, a.faltas_trimestre_2,
+               a.promedio_notas_calculado
+        FROM alumnos_hack4edu a
+        WHERE a.necesidad_intervencion IS NOT NULL
     """
     params_avisos = []
     if rol == "docente":
-        sql_avisos += " WHERE escuela_id = ? AND grado_secundaria = ?"
+        sql_avisos += " AND a.escuela_id = ? AND a.grado_secundaria = ?"
         params_avisos = [escuela_id, grado]
     elif rol == "director":
-        sql_avisos += " WHERE escuela_id = ?"
+        sql_avisos += " AND a.escuela_id = ?"
         params_avisos = [escuela_id]
 
-    sql_avisos += " ORDER BY CASE necesidad_intervencion WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END, prob_abandono_pct DESC LIMIT 15;"
+    sql_avisos += " ORDER BY CASE a.necesidad_intervencion WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END, a.prob_abandono_pct DESC LIMIT 15;"
     avisos_reales = db_adapter.fetch_all(sql_avisos, tuple(params_avisos))
 
-    # Mapeo a formato legible para frontend
+    # Mapeo a formato legible para frontend con factores reales calculados desde la base de datos
     avisos_formateados = []
     for a in avisos_reales:
+        factores = []
+        # Factor 1: Factor principal identificado por el modelo
+        if a.get("factor_principal_riesgo"):
+            factores.append({
+                "texto": a["factor_principal_riesgo"],
+                "peso": float(a.get("prob_abandono_pct") or 25.0),
+            })
+
+        # Factor 2: Riesgo de pérdida del subsidio Juntos (si aplica)
+        juntos = int(a.get("beneficiario_juntos") or 0)
+        prob_beca = float(a.get("prob_perdida_beca_pct") or 0.0)
+        if juntos == 1 and prob_beca > 0:
+            factores.append({
+                "texto": "Riesgo sobre continuidad de subsidio Juntos",
+                "peso": prob_beca,
+            })
+
+        # Factor 3: Riesgo proyectado de repetición
+        prob_rep = float(a.get("prob_repeticion_pct") or 0.0)
+        if prob_rep >= 5.0 and len(factores) < 3:
+            factores.append({
+                "texto": "Riesgo proyectado de repetición de curso",
+                "peso": prob_rep,
+            })
+
+        # Dedicación laboral si la hay
+        horas_trabajo = float(a.get("horas_trabajo_semanal") or 0.0)
+        if horas_trabajo > 0 and len(factores) < 3:
+            factores.append({
+                "texto": f"Carga de apoyo laboral semanal ({horas_trabajo:g} h)",
+                "peso": min(60.0, round(horas_trabajo * 4.0, 1)),
+            })
+
+        # Distancia de desplazamiento si es relevante
+        dist_km = float(a.get("distancia_hogar_escuela_km") or 0.0)
+        if dist_km >= 3.0 and len(factores) < 3:
+            factores.append({
+                "texto": f"Desplazamiento rural prolongado ({dist_km:g} km)",
+                "peso": min(50.0, round(dist_km * 5.0, 1)),
+            })
+
+        # Brecha de conectividad
+        if a.get("internet_hogar") == 0 and len(factores) < 3:
+            factores.append({
+                "texto": "Sin conexión a internet en el hogar",
+                "peso": 20.0,
+            })
+
+        if not factores:
+            factores.append({
+                "texto": "Evolución escolar y seguimiento ordinario de aula",
+                "peso": 10.0,
+            })
+
+        f1 = factores[0] if len(factores) > 0 else {"texto": "Seguimiento pedagógico", "peso": 15.0}
+        f2 = factores[1] if len(factores) > 1 else None
+        f3 = factores[2] if len(factores) > 2 else None
+
         avisos_formateados.append({
             "prediccion_id": a["alumno_id"],
             "titulo_humano": f"Estudiante {a['alumno_id']} · Alerta de acompañamiento ({a['necesidad_intervencion'] or 'Ordinaria'})",
@@ -206,16 +268,13 @@ def get_role_dashboard_panel(user: Dict[str, Any] = Depends(get_current_user)) -
                 f"Faltas estimadas en T3: {a['prediccion_faltas_t3'] or 0} días · "
                 f"Riesgo de repetición: {a['prob_repeticion_pct'] or 0}%."
             ),
-            "factor_1_texto": a["factor_principal_riesgo"] or "Trayectoria académica y contexto de asistencia",
-            "factor_1_peso": float(a["prob_abandono_pct"] or 35.0),
-            "factor_2_texto": (
-                f"Riesgo de pérdida subsidio Juntos: {a['prob_perdida_beca_pct']}%"
-                if a["prob_perdida_beca_pct"]
-                else f"Índice de riesgo latente: {a['indice_desanimo'] or 0}"
-            ),
-            "factor_2_peso": float(a["prob_repeticion_pct"] or 25.0),
-            "factor_3_texto": "Supervisión pedagógica recomendada",
-            "factor_3_peso": 20.0,
+            "factores": factores[:3],
+            "factor_1_texto": f1["texto"],
+            "factor_1_peso": f1["peso"],
+            "factor_2_texto": f2["texto"] if f2 else None,
+            "factor_2_peso": f2["peso"] if f2 else None,
+            "factor_3_texto": f3["texto"] if f3 else None,
+            "factor_3_peso": f3["peso"] if f3 else None,
             "recomendacion_pedagogica": a["recomendacion_pedagogica"] or "Revisar situación y acordar medidas en tutoría.",
             "accion_sugerida_boton": "Registrar acuerdo",
         })
