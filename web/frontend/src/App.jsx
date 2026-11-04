@@ -12,6 +12,7 @@ import {
 import { DelegadoTerritorialView } from "./components/RoleViews.jsx";
 import { RoleDashboard } from "./components/RoleDashboard.jsx";
 import { StudentEntryModal } from "./components/StudentEntryModal.jsx";
+import { PredictionsView } from "./components/PredictionsView.jsx";
 
 const ROLE_META = {
   docente: {
@@ -53,7 +54,7 @@ const CHAT_PRESETS = {
 };
 
 function mapDbAlertToPista(item, index) {
-  const code = item.codigo_seguimiento || item.alumno_id || item.prediccion_id || `ALU-${index + 1}`;
+  const code = item.codigo_seguimiento || item.alumno_id || item.prediccion_id;
   const factors = [];
 
   if (Array.isArray(item.factores) && item.factores.length > 0) {
@@ -84,12 +85,6 @@ function mapDbAlertToPista(item, index) {
     }
   }
 
-  if (factors.length === 0) {
-    factors.push({
-      label: "Asistencia o rendimiento que requiere atención pedagógica",
-      pct: 100,
-    });
-  }
 
   return {
     id: item.prediccion_id || code,
@@ -98,13 +93,10 @@ function mapDbAlertToPista(item, index) {
     kickerDetail: `ESTUDIANTE ${code}`,
     title: item.titulo_humano || `Prioridad de acompañamiento (${code})`,
     lead:
-      item.descripcion_situacion ||
-      item.recomendacion_pedagogica ||
-      "Situación identificada a partir de los registros escolares de asistencia y calificaciones.",
+      [item.categoria_contexto, item.descripcion_situacion].filter(Boolean).join(" · ") ||
+      "El modelo sugiere revisar esta situación.",
     factors,
-    defaultDecision:
-      item.recomendacion_pedagogica ||
-      "Adaptación temporal de entregas y tutoría con la familia",
+    defaultDecision: item.recomendacion_pedagogica || "",
     helperPrompt: `Analiza la situación del estudiante ${code} en los registros de aula y sugiéreme recomendaciones de acompañamiento pedagógico.`,
     fromDatabase: true,
     estado_revision: item.estado_revision,
@@ -114,7 +106,7 @@ function mapDbAlertToPista(item, index) {
 export function App({ session, onLogout }) {
   // El rol y el ámbito vienen de la sesión (token JWT): no se pueden cambiar desde la interfaz.
   const activeRole = session?.user?.rol || "docente";
-  const [activeNav, setActiveNav] = useState("revisar"); // "revisar" | "comovamos" | "lohablamos"
+  const [activeNav, setActiveNav] = useState("revisar"); // "revisar" | "comovamos" | "predicciones" | "lohablamos"
   const token = session?.token || null;
   const user = session?.user || null;
   const [dashboardRefresh, setDashboardRefresh] = useState(0);
@@ -198,7 +190,7 @@ export function App({ session, onLogout }) {
   // Construir lista de alertas exclusivamente de la base de datos real
   const activePistas = useMemo(() => {
     const dbAlerts = panelData?.avisos_predictivos || [];
-    return dbAlerts.slice(0, 8).map(mapDbAlertToPista);
+    return dbAlerts.map(mapDbAlertToPista);
   }, [panelData?.avisos_predictivos]);
 
   const currentPista = activePistas[selectedPistaIdx] || activePistas[0] || null;
@@ -425,6 +417,20 @@ export function App({ session, onLogout }) {
 
             <button
               type="button"
+              className={`edusight-nav-btn ${activeNav === "predicciones" ? "active" : ""}`}
+              onClick={() => setActiveNav("predicciones")}
+            >
+              <span className="edusight-nav-btn-left">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v5l3 3" />
+                </svg>
+                <span>Predicciones</span>
+              </span>
+            </button>
+
+            <button
+              type="button"
               className={`edusight-nav-btn ${activeNav === "lohablamos" ? "active" : ""}`}
               onClick={() => setActiveNav("lohablamos")}
             >
@@ -445,7 +451,7 @@ export function App({ session, onLogout }) {
             para enseñar.
           </div>
           <div className="edusight-motto-sub">
-            Región Andina Sur
+            {user?.ugel || user?.escuela_id || ""}
             <br />
             Un apoyo para tu día a día.
           </div>
@@ -677,7 +683,7 @@ export function App({ session, onLogout }) {
                   const numStr = String(idx + 1).padStart(2, "0");
                   const isDone =
                     completedIds[pista.id] ||
-                    pista.estado_revision === "Acuerdo registrado";
+                    pista.estado_revision === "Revisado";
 
                   return (
                     <button
@@ -723,6 +729,9 @@ export function App({ session, onLogout }) {
 
                   <div className="factors-section-title">Qué puede estar influyendo</div>
 
+                  {currentPista.factors.length === 0 && (
+                    <p className="factors-disclaimer">El modelo no ha destacado factores concretos para este estudiante.</p>
+                  )}
                   {currentPista.factors.map((f, fIdx) => (
                     <div className="factor-bar-item" key={fIdx}>
                       <div className="factor-bar-header">
@@ -739,7 +748,7 @@ export function App({ session, onLogout }) {
                   ))}
 
                   <p className="factors-disclaimer">
-                    Estas cifras son orientativas. Una conversación ayuda a entender lo que los datos no cuentan.
+                    El porcentaje indica cuánto pesa cada factor en la sugerencia del modelo para este estudiante; no es una probabilidad. Una conversación ayuda a entender lo que los datos no cuentan.
                   </p>
 
                   <div className="detail-actions-row">
@@ -787,8 +796,10 @@ export function App({ session, onLogout }) {
                           id="select-acomp"
                           className="form-select"
                           value={decisionText}
+                          required
                           onChange={(e) => setDecisionText(e.target.value)}
                         >
+                          <option value="">— Elige una medida —</option>
                           {Array.from(
                             new Set(
                               [
@@ -866,18 +877,27 @@ export function App({ session, onLogout }) {
             />
             {activeRole === "delegado" && (
               <main className="edusight-content" style={{ paddingTop: 0 }}>
-                <DelegadoTerritorialView
-                  escuelas={panelData?.escuelas_red || []}
-                  token={token}
-                  onLoadSample={handleLoadSampleData}
-                />
+                <DelegadoTerritorialView token={token} />
               </main>
             )}
           </>
         )}
 
         {/* ==================================================================
-            VISTA 3: "LO HABLAMOS" (CHAT AGENTE REACT LANGGRAPH + MCP + QWEN)
+            VISTA 3: "PREDICCIONES" (MODELO LIGHTGBM + RANDOM FOREST POR ROL)
+           ================================================================== */}
+        {activeNav === "predicciones" && (
+          <PredictionsView
+            token={token}
+            role={activeRole}
+            onUnauthorized={handleSessionExpired}
+            refreshKey={dashboardRefresh}
+            onChanged={loadRoleData}
+          />
+        )}
+
+        {/* ==================================================================
+            VISTA 4: "LO HABLAMOS" (CHAT AGENTE REACT LANGGRAPH + MCP + QWEN)
            ================================================================== */}
         {activeNav === "lohablamos" && (
           <main className="edusight-content">
@@ -1090,7 +1110,7 @@ export function App({ session, onLogout }) {
           userRole={activeRole}
           currentSchoolId={user?.escuela_id}
           currentGrade={user?.grado_secundaria}
-          userName={user?.nombre_completo || user?.username}
+          currentUgel={user?.ugel}
           onClose={() => setStudentModalOpen(false)}
           onSuccess={(msg) => {
             showToast(msg);

@@ -3,19 +3,6 @@
  * Gestiona la autenticación JWT por rol, las vistas SQL, la carga de datos y la conexión con Qwen/LangGraph.
  */
 
-export async function loginRole(username, password = "donprofesor2026") {
-  const response = await fetch("/api/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || "Error al iniciar sesión con JWT");
-  }
-  return response.json();
-}
-
 export async function fetchDashboardPanel(token) {
   const response = await fetch("/api/panel", {
     headers: { Authorization: `Bearer ${token}` },
@@ -51,128 +38,72 @@ export async function sendMcpChatQuestion(token, question) {
   return response.json();
 }
 
-export async function registerPedagogicalAction(token, payload) {
-  const response = await fetch("/api/acciones", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    throw new Error("No se pudo registrar la decisión pedagógica");
-  }
-  return response.json();
+export function registerPedagogicalAction(token, payload) {
+  return requestJson("/api/acciones", { method: "POST", token, body: payload });
 }
 
-export async function runGrantSimulationApi(token, payload) {
-  const response = await fetch("/api/simular-subvencion", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    throw new Error("Error al ejecutar la simulación de subvenciones");
-  }
-  return response.json();
+export function runGrantSimulationApi(token, payload) {
+  return requestJson("/api/simular-subvencion", { method: "POST", token, body: payload });
 }
 
-export async function loadSampleDatasetApi(token) {
-  const response = await fetch("/api/datos/semilla-prueba", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) {
-    throw new Error("Error al cargar datos de prueba");
-  }
-  return response.json();
+export function loadSampleDatasetApi(token) {
+  return requestJson("/api/datos/semilla-prueba", { method: "POST", token });
 }
 
-export async function clearDatasetApi(token) {
-  const response = await fetch("/api/datos/vaciar", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) {
-    throw new Error("Error al vaciar la base de datos");
-  }
-  return response.json();
+export function clearDatasetApi(token) {
+  return requestJson("/api/datos/vaciar", { method: "POST", token });
 }
 
-export async function createStudentApi(token, studentData) {
-  const response = await fetch("/api/datos/alumno", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(studentData),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || "Error al registrar el estudiante");
-  }
-  return response.json();
+export function createStudentApi(token, studentData) {
+  return requestJson("/api/datos/alumno", { method: "POST", token, body: studentData });
 }
 
-export async function pasteStudentDataApi(token, dataText) {
-  const response = await fetch("/api/datos/pegar", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ data_text: dataText }),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || "Error al importar los datos pegados");
-  }
-  return response.json();
+export function pasteStudentDataApi(token, dataText) {
+  return requestJson("/api/datos/pegar", { method: "POST", token, body: { data_text: dataText } });
 }
 
 export async function uploadCsvDatasetApi(token, file) {
   const formData = new FormData();
   formData.append("file", file);
-  const response = await fetch("/api/datos/importar-csv", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || "Error al subir el archivo CSV");
+  let response;
+  try {
+    response = await fetch("/api/datos/importar-csv", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+  } catch (_err) {
+    throw new ApiError("No se puede conectar con el servidor. Comprueba que la API está arrancada.", 0);
   }
-  return response.json();
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new ApiError(describeValidationError(data.detail) || "Error al subir el archivo CSV", response.status);
+  }
+  return data;
 }
 
-export async function fetchLlmStatusApi(token) {
-  const response = await fetch("/api/config/llm", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) {
-    throw new Error("Error al consultar estado del LLM");
-  }
-  return response.json();
+export function fetchLlmStatusApi(token) {
+  return requestJson("/api/config/llm", { token });
 }
 
-export async function updateLlmConfigApi(token, payload) {
-  const response = await fetch("/api/config/llm", {
+/* Modelo predictivo y pestaña «Predicciones» */
+export function fetchModelStatusApi(token) {
+  return requestJson("/api/modelo/estado", { token });
+}
+
+export function fetchModelFieldsApi(token) {
+  return requestJson("/api/modelo/campos", { token });
+}
+
+export function fetchPredictionsApi(token) {
+  return requestJson("/api/predicciones", { token });
+}
+
+export function recalculatePredictionsApi(token, soloPendientes = false) {
+  return requestJson(`/api/predicciones/recalcular?solo_pendientes=${soloPendientes ? "true" : "false"}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
+    token,
   });
-  if (!response.ok) {
-    throw new Error("Error al actualizar configuración del LLM");
-  }
-  return response.json();
 }
 
 /* ==========================================================================

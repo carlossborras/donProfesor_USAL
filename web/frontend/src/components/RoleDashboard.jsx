@@ -106,7 +106,7 @@ function DocentePanel({ data }) {
                 <tr key={a.alumno_id}>
                   <td className="mono">{a.alumno_id}</td>
                   <td>{formatValue(a.asistencia_pct, " %")}</td>
-                  <td>{a.faltas_t1} → {a.faltas_t2}</td>
+                  <td>{formatValue(a.faltas_t1, "", 0)} → {formatValue(a.faltas_t2, "", 0)}</td>
                   <td>{formatValue(a.nota_t1)} → {formatValue(a.nota_t2)}</td>
                   <td>{formatValue(a.promedio)}</td>
                   <td>{a.sugerir_revision ? <span className="tag-review">Sugerir revisión</span> : <span className="muted">—</span>}</td>
