@@ -23,7 +23,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DONPROFESOR_JWT_SECRET: "hack4edu-donprofesor-secret-key-2026"
+      DONPROFESOR_JWT_SECRET: "${DONPROFESOR_JWT_SECRET:-}"
       # Si se desea conectar a un modelo Gemini en vivo además del motor SQL MCP:
       # GEMINI_API_KEY: "${GEMINI_API_KEY}"
     depends_on:
