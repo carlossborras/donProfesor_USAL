@@ -1,0 +1,8 @@
+web/frontend/node_modules
+.pixi
+.venv
+**/__pycache__
+db/*.db
+*.db
+.env
+.git

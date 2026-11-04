@@ -24,6 +24,10 @@ services:
       - "8000:8000"
     environment:
       DONPROFESOR_JWT_SECRET: "${DONPROFESOR_JWT_SECRET:-}"
+      DONPROFESOR_MODEL_PATH: "/app/modelo.joblib"
+      QWEN_BASE_URL: "${QWEN_BASE_URL:-}"
+      QWEN_MODEL_NAME: "${QWEN_MODEL_NAME:-donprofesor-llm}"
+      QWEN_API_KEY: "${QWEN_API_KEY:-}"
       # Si se desea conectar a un modelo Gemini en vivo además del motor SQL MCP:
       # GEMINI_API_KEY: "${GEMINI_API_KEY}"
     depends_on:
