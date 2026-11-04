@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: donprofesor-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_DB: donprofesor
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./db/views_and_grants.sql:/docker-entrypoint-initdb.d/02_views_and_grants.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d donprofesor"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: donprofesor-app
+    ports:
+      - "8000:8000"
+    environment:
+      DONPROFESOR_JWT_SECRET: "hack4edu-donprofesor-secret-key-2026"
+      # Si se desea conectar a un modelo Gemini en vivo además del motor SQL MCP:
+      # GEMINI_API_KEY: "${GEMINI_API_KEY}"
+    depends_on:
+      db:
+        condition: service_healthy
