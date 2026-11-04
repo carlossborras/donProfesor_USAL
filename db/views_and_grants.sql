@@ -28,11 +28,13 @@ SELECT
     nota_trimestre_1_0_20,
     nota_trimestre_2_0_20,
     promedio_notas_calculado,
+    prediccion_nota_t1,
+    prediccion_nota_t2,
     prediccion_nota_t3,
+    prediccion_faltas_t1,
+    prediccion_faltas_t2,
     prediccion_faltas_t3,
-    prob_perdida_beca_pct,
-    prob_repeticion_pct,
-    prob_abandono_pct,
+    -- Sin probabilidades: el docente ve «sugerir revisión» y factores, nunca porcentajes por alumno
     necesidad_intervencion,
     indice_desanimo,
     factor_principal_riesgo,
@@ -49,7 +51,7 @@ SELECT
     ROUND(AVG(asistencia_pct_calculada), 2) AS asistencia_media_pct,
     ROUND(AVG(promedio_notas_calculado), 2) AS promedio_notas,
     ROUND(AVG(internet_hogar) * 100.0, 1) AS conectividad_hogar_pct,
-    ROUND(AVG(tiempo_estudio_semanal), 1) AS horas_estudio_media,
+    ROUND(AVG(prediccion_nota_t3), 2) AS nota_t3_prevista_media,
     SUM(CASE WHEN beneficiario_juntos = 1 THEN 1 ELSE 0 END) AS total_beneficiarios_juntos,
     SUM(CASE WHEN necesidad_intervencion = 'Alta' THEN 1 ELSE 0 END) AS casos_prioridad_alta,
     SUM(CASE WHEN necesidad_intervencion = 'Media' THEN 1 ELSE 0 END) AS casos_prioridad_media,
@@ -57,7 +59,8 @@ SELECT
     ROUND(AVG(prob_abandono_pct), 2) AS prob_abandono_media_pct,
     ROUND(AVG(indice_desanimo), 2) AS indice_desanimo_medio
 FROM alumnos_hack4edu
-GROUP BY escuela_id, grado_secundaria;
+GROUP BY escuela_id, grado_secundaria
+HAVING COUNT(*) >= 5; -- k-anonimato
 
 -- 3. VISTA DELEGADO (UGEL / Territorial): Agregados por escuela, distrito y ámbito rural/urbano
 CREATE VIEW vista_delegado AS
@@ -76,7 +79,8 @@ SELECT
     ROUND(AVG(prob_abandono_pct), 2) AS prob_abandono_media_pct,
     ROUND(AVG(prob_repeticion_pct), 2) AS prob_repeticion_media_pct
 FROM alumnos_hack4edu
-GROUP BY ugel, distrito, escuela_id, zona_escuela;
+GROUP BY ugel, distrito, escuela_id, zona_escuela
+HAVING COUNT(*) >= 5; -- k-anonimato
 
 -- 4. VISTA AVISOS PREDICTIVOS: Casos detectados para revisión y acompañamiento
 CREATE VIEW vista_avisos_predictivos AS

@@ -14,7 +14,8 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import create_engine, text
-from db.seed_db import get_sqlite_connection, init_and_seed_database, SQLITE_PATH
+import db.seed_db as _seed
+from db.seed_db import get_sqlite_connection, init_and_seed_database, ensure_database
 
 
 _PLACEHOLDER = re.compile(r"\?")
@@ -48,7 +49,7 @@ class DatabaseAdapter:
             "connection_target": (
                 self.database_url.split("@")[-1]
                 if self.database_url
-                else f"Semilla Provisional Local ({SQLITE_PATH.name})"
+                else f"Semilla Provisional Local ({_seed.SQLITE_PATH.name})"
             ),
             "note": (
                 "Modo Provisional Activo: listo para conectar con la BD definitiva del equipo mediante DATABASE_URL."
@@ -64,7 +65,7 @@ class DatabaseAdapter:
                 result = conn.execute(text(sql_named), bind)
                 return [dict(row._mapping) for row in result.fetchall()]
         else:
-            init_and_seed_database(force_reset=False)
+            ensure_database()
             conn = get_sqlite_connection()
             cur = conn.cursor()
             cur.execute(sql, params)
@@ -82,7 +83,7 @@ class DatabaseAdapter:
             with self.engine.begin() as conn:
                 conn.execute(text(sql_named), bind)
         else:
-            init_and_seed_database(force_reset=False)
+            ensure_database()
             conn = get_sqlite_connection()
             cur = conn.cursor()
             cur.execute(sql, params)

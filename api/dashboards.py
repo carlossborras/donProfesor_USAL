@@ -22,13 +22,18 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from api.security import ROLES, get_current_user
 from db.adapter import db_adapter
+from db.students import where_ambito
+from model import config as model_config
+import json
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
-K_MIN = 5
-NOTA_APROBATORIA = 11.0
-UMBRAL_CONECTIVIDAD_PCT = 50.0
-UMBRAL_DISTANCIA_KM = 3.0
+import os
+
+K_MIN = model_config.k_minimo()
+NOTA_APROBATORIA = float(model_config.NOTA_APROBATORIA)
+UMBRAL_CONECTIVIDAD_PCT = float(os.environ.get("DONPROFESOR_UMBRAL_CONECTIVIDAD_PCT", "50"))
+UMBRAL_DISTANCIA_KM = float(os.environ.get("DONPROFESOR_DISTANCIA_TRANSPORTE_KM", "3"))
 SUGERIR_REVISION_SQL = "necesidad_intervencion IN ('Alta', 'Media')"
 
 AVISO_DOCENTE = (
@@ -83,7 +88,12 @@ def _base(rol: str, scope: Dict[str, Any], aviso: str) -> Dict[str, Any]:
 
 def _factores(fila: Dict[str, Any]) -> List[str]:
     factores: List[str] = []
-    if fila.get("factor_principal_riesgo"):
+    try:
+        explicados = json.loads(fila.get("factores_json") or "[]")
+    except ValueError:
+        explicados = []
+    factores.extend(str(f["texto"]) for f in explicados if isinstance(f, dict) and f.get("texto"))
+    if not factores and fila.get("factor_principal_riesgo"):
         factores.append(str(fila["factor_principal_riesgo"]))
     horas = float(fila.get("horas_trabajo_semanal") or 0)
     if horas > 0:
@@ -93,8 +103,8 @@ def _factores(fila: Dict[str, Any]) -> List[str]:
         factores.append(f"Vive a {distancia:g} km de la escuela")
     if fila.get("internet_hogar") == 0:
         factores.append("Sin internet en casa")
-    faltas1, faltas2 = _ent(fila.get("faltas_trimestre_1")), _ent(fila.get("faltas_trimestre_2"))
-    if faltas2 > faltas1 + 3:
+    faltas1, faltas2 = fila.get("faltas_trimestre_1"), fila.get("faltas_trimestre_2")
+    if faltas1 is not None and faltas2 is not None and int(faltas2) > int(faltas1) + 3:
         factores.append(f"Sus faltas subieron en el 2.º trimestre ({faltas1} → {faltas2})")
     return factores
 
@@ -106,7 +116,7 @@ def panel_docente(user: Dict[str, Any]) -> Dict[str, Any]:
         datos["mensaje"] = "Tu cuenta no tiene escuela o grado asignados."
         return datos
 
-    params = (escuela, int(grado))
+    where, params = where_ambito(user)
     k = db_adapter.fetch_one(
         f"""
         SELECT COUNT(*) AS n,
@@ -132,7 +142,7 @@ def panel_docente(user: Dict[str, Any]) -> Dict[str, Any]:
                SUM(CASE WHEN promedio_notas_calculado >= 14 AND promedio_notas_calculado < 17 THEN 1 ELSE 0 END) AS n_17,
                SUM(CASE WHEN promedio_notas_calculado >= 17 THEN 1 ELSE 0 END) AS n_20
         FROM alumnos_hack4edu
-        WHERE escuela_id = ? AND grado_secundaria = ?;
+        WHERE {where};
         """,
         params,
     ) or {}
@@ -152,13 +162,13 @@ def panel_docente(user: Dict[str, Any]) -> Dict[str, Any]:
         return datos
 
     filas = db_adapter.fetch_all(
-        """
+        f"""
         SELECT alumno_id, asistencia_pct_calculada, faltas_trimestre_1, faltas_trimestre_2,
                nota_trimestre_1_0_20, nota_trimestre_2_0_20, promedio_notas_calculado,
                distancia_hogar_escuela_km, horas_trabajo_semanal, internet_hogar, beneficiario_juntos,
-               necesidad_intervencion, factor_principal_riesgo, recomendacion_pedagogica
+               necesidad_intervencion, factor_principal_riesgo, factores_json, recomendacion_pedagogica
         FROM alumnos_hack4edu
-        WHERE escuela_id = ? AND grado_secundaria = ?
+        WHERE {where}
         ORDER BY alumno_id ASC
         LIMIT 300;
         """,
@@ -170,8 +180,8 @@ def panel_docente(user: Dict[str, Any]) -> Dict[str, Any]:
         alumnos.append({
             "alumno_id": f["alumno_id"],
             "asistencia_pct": _num(f.get("asistencia_pct_calculada")),
-            "faltas_t1": _ent(f.get("faltas_trimestre_1")),
-            "faltas_t2": _ent(f.get("faltas_trimestre_2")),
+            "faltas_t1": _num(f.get("faltas_trimestre_1"), 0),
+            "faltas_t2": _num(f.get("faltas_trimestre_2"), 0),
             "nota_t1": _num(f.get("nota_trimestre_1_0_20")),
             "nota_t2": _num(f.get("nota_trimestre_2_0_20")),
             "promedio": _num(f.get("promedio_notas_calculado")),
@@ -228,6 +238,7 @@ def panel_director(user: Dict[str, Any]) -> Dict[str, Any]:
     if not escuela:
         datos["mensaje"] = "Tu cuenta no tiene escuela asignada."
         return datos
+    where, params = where_ambito(user)
 
     filas = db_adapter.fetch_all(
         f"""
@@ -244,11 +255,11 @@ def panel_director(user: Dict[str, Any]) -> Dict[str, Any]:
                SUM(CASE WHEN beneficiario_juntos = 1 THEN 1 ELSE 0 END) AS juntos,
                SUM(CASE WHEN horas_trabajo_semanal > 0 THEN 1 ELSE 0 END) AS trabaja
         FROM alumnos_hack4edu
-        WHERE escuela_id = ?
+        WHERE {where}
         GROUP BY grado_secundaria
         ORDER BY grado_secundaria ASC;
         """,
-        (escuela,),
+        params,
     )
     total = sum(_ent(f.get("n")) for f in filas)
     visibles, ocultos = [], []
@@ -289,9 +300,9 @@ def panel_director(user: Dict[str, Any]) -> Dict[str, Any]:
                SUM(CASE WHEN internet_hogar = 1 THEN 1 ELSE 0 END) AS con_internet,
                SUM(CASE WHEN {SUGERIR_REVISION_SQL} THEN 1 ELSE 0 END) AS revision,
                SUM(CASE WHEN beneficiario_juntos = 1 THEN 1 ELSE 0 END) AS juntos
-        FROM alumnos_hack4edu WHERE escuela_id = ?;
+        FROM alumnos_hack4edu WHERE {where};
         """,
-        (escuela,),
+        params,
     ) or {}
     datos["hay_datos"] = True
     datos["kpis"] = [
@@ -335,6 +346,7 @@ def panel_delegado(user: Dict[str, Any]) -> Dict[str, Any]:
     if not ugel:
         datos["mensaje"] = "Tu cuenta no tiene UGEL asignada."
         return datos
+    where, params = where_ambito(user)
 
     agregados = f"""
                COUNT(*) AS n,
@@ -348,18 +360,18 @@ def panel_delegado(user: Dict[str, Any]) -> Dict[str, Any]:
     por_escuela = db_adapter.fetch_all(
         f"""
         SELECT escuela_id, MIN(distrito) AS distrito, MIN(zona_escuela) AS zona, {agregados}
-        FROM alumnos_hack4edu WHERE ugel = ?
+        FROM alumnos_hack4edu WHERE {where}
         GROUP BY escuela_id ORDER BY escuela_id ASC;
         """,
-        (ugel,),
+        params,
     )
     por_zona = db_adapter.fetch_all(
         f"""
         SELECT zona_escuela AS zona, {agregados}
-        FROM alumnos_hack4edu WHERE ugel = ?
+        FROM alumnos_hack4edu WHERE {where}
         GROUP BY zona_escuela ORDER BY zona_escuela ASC;
         """,
-        (ugel,),
+        params,
     )
     total = sum(_ent(f.get("n")) for f in por_escuela)
 
@@ -399,9 +411,9 @@ def panel_delegado(user: Dict[str, Any]) -> Dict[str, Any]:
         return datos
 
     k = db_adapter.fetch_one(
-        f"SELECT {agregados}, SUM(CASE WHEN zona_escuela = 'Rural' THEN 1 ELSE 0 END) AS rurales "
-        "FROM alumnos_hack4edu WHERE ugel = ?;",
-        (ugel,),
+        f"SELECT {agregados}, SUM(CASE WHEN UPPER(zona_escuela) = 'RURAL' THEN 1 ELSE 0 END) AS rurales "
+        f"FROM alumnos_hack4edu WHERE {where};",
+        params,
     ) or {}
     datos["hay_datos"] = True
     datos["kpis"] = [

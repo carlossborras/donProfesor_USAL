@@ -1,6 +1,6 @@
 -- =============================================================================
 -- DONPROFESOR (#Hack4Edu 2026, Reto 13) · Esquema de Base de Datos Real
--- Contiene las 30 variables de entrada (Bloques A-H) + 7 variables del Modelo Predictivo (Bloque I)
+-- Variables de entrada (A-H) y salidas del modelo predictivo de Carlos (I)
 -- =============================================================================
 
 DROP VIEW IF EXISTS vista_docente;
@@ -9,65 +9,65 @@ DROP VIEW IF EXISTS vista_delegado;
 DROP VIEW IF EXISTS vista_avisos_predictivos;
 
 CREATE TABLE IF NOT EXISTS alumnos_hack4edu (
-    -- A. Identificación y ubicación
+    -- A. Identificación y ámbito (obligatorios: definen quién puede ver al estudiante)
     alumno_id VARCHAR(32) PRIMARY KEY,
     escuela_id VARCHAR(32) NOT NULL,
-    ugel VARCHAR(80) NOT NULL,
-    distrito VARCHAR(80) NOT NULL,
-    zona_escuela VARCHAR(20) NOT NULL, -- 'Rural' / 'Urbana'
+    ugel VARCHAR(80),
+    distrito VARCHAR(80),
+    zona_escuela VARCHAR(20), -- 'Rural' / 'Urbana'
 
-    -- B. Datos demográficos
-    sexo VARCHAR(10) NOT NULL, -- 'M' / 'F'
-    edad INTEGER NOT NULL,
+    -- B-E. Variables de entrada del modelo (las que se conocen al matricular).
+    -- Pueden faltar: el modelo imputa los huecos y la interfaz avisa de los datos incompletos.
+    sexo VARCHAR(10),
+    edad INTEGER,
     grado_secundaria INTEGER NOT NULL, -- 1 a 5
-    tamano_familia INTEGER NOT NULL,
+    tamano_familia VARCHAR(20), -- '3 o menos' / 'Mas de 3'
+    educacion_madre_0_4 INTEGER, -- 0 sin estudios ... 4 universitaria
+    educacion_padre_0_4 INTEGER,
+    ocupacion_madre VARCHAR(80),
+    ocupacion_padre VARCHAR(80),
+    internet_hogar INTEGER, -- 1 sí / 0 no
+    tiempo_estudio_semanal VARCHAR(20), -- 'Menos de 2 h', '2-5 h', '5-10 h', 'Mas de 10 h'
+    tiempo_desplazamiento VARCHAR(20), -- 'Menos de 15 min', '15-30 min', '30-60 min', 'Mas de 60 min'
+    distancia_hogar_escuela_km NUMERIC(5,2),
+    repeticiones_previas INTEGER,
+    apoyo_escolar INTEGER,
+    apoyo_familiar INTEGER,
+    beneficiario_juntos INTEGER, -- Programa Nacional de Apoyo Directo a los Más Pobres
+    horas_trabajo_semanal NUMERIC(4,1),
+    dias_lectivos_previstos INTEGER,
 
-    -- C. Contexto educativo familiar
-    educacion_madre_0_4 INTEGER NOT NULL, -- 0: Sin educ, 1: Primaria, 2: Secundaria, 3: Sup. no univ, 4: Universitaria
-    educacion_padre_0_4 INTEGER NOT NULL,
-    ocupacion_madre VARCHAR(80) NOT NULL,
-    ocupacion_padre VARCHAR(80) NOT NULL,
-    internet_hogar INTEGER NOT NULL, -- 1: Sí, 0: No
-    tiempo_estudio_semanal NUMERIC(4,1) NOT NULL, -- horas semanales
+    -- F-G. Datos observados durante el curso (vacíos hasta que se conocen)
+    faltas_trimestre_1 INTEGER,
+    faltas_trimestre_2 INTEGER,
+    nota_trimestre_1_0_20 NUMERIC(4,2), -- escala vigesimal, aprobatorio >= 11
+    nota_trimestre_2_0_20 NUMERIC(4,2),
 
-    -- D. Accesibilidad y trayectoria académica
-    tiempo_desplazamiento INTEGER NOT NULL, -- minutos al colegio
-    distancia_hogar_escuela_km NUMERIC(5,2) NOT NULL,
-    repeticiones_previas INTEGER NOT NULL,
-    apoyo_escolar INTEGER NOT NULL, -- 1: Sí, 0: No
-    apoyo_familiar INTEGER NOT NULL, -- 1: Sí, 0: No
+    -- H. Calculadas a partir de los datos observados
+    faltas_totales_calculadas INTEGER,
+    asistencia_pct_calculada NUMERIC(5,2),
+    promedio_notas_calculado NUMERIC(4,2),
 
-    -- E. Situación económica
-    beneficiario_juntos INTEGER NOT NULL, -- 1: Sí, 0: No (Programa Nacional de Apoyo Directo a los Más Pobres)
-    horas_trabajo_semanal NUMERIC(4,1) NOT NULL,
-
-    -- F. Asistencia escolar
-    dias_lectivos_previstos INTEGER NOT NULL,
-    faltas_trimestre_1 INTEGER NOT NULL,
-    faltas_trimestre_2 INTEGER NOT NULL,
-
-    -- G. Rendimiento académico (Escala vigesimal oficial Perú 0-20, aprobatorio >= 11)
-    nota_trimestre_1_0_20 NUMERIC(4,2) NOT NULL,
-    nota_trimestre_2_0_20 NUMERIC(4,2) NOT NULL,
-
-    -- H. Variables calculadas
-    faltas_totales_calculadas INTEGER NOT NULL,
-    asistencia_pct_calculada NUMERIC(5,2) NOT NULL,
-    promedio_notas_calculado NUMERIC(4,2) NOT NULL,
-
-    -- I. Variables objetivo calculadas por el Modelo Predictivo (Persona 2)
-    -- Son NULLables para permitir cargar los datos brutos antes de ejecutar el modelo
+    -- I. Salidas del modelo predictivo (modelo.joblib). NULL = pendiente de predecir
     prob_abandono_pct NUMERIC(5,2),
-    prediccion_nota_t3 NUMERIC(4,2),
-    prediccion_faltas_t3 INTEGER,
-    prob_perdida_beca_pct NUMERIC(5,2),
+    prob_perdida_beca_pct NUMERIC(5,2), -- solo familias en Juntos
     prob_repeticion_pct NUMERIC(5,2),
     necesidad_intervencion VARCHAR(20), -- 'Alta', 'Media', 'Baja'
-    indice_desanimo NUMERIC(5,2),
-    factor_principal_riesgo VARCHAR(160),
+    prob_necesidad_alta_pct NUMERIC(5,2),
+    prediccion_nota_t1 NUMERIC(4,2),
+    prediccion_nota_t2 NUMERIC(4,2),
+    prediccion_nota_t3 NUMERIC(4,2),
+    prediccion_faltas_t1 INTEGER,
+    prediccion_faltas_t2 INTEGER,
+    prediccion_faltas_t3 INTEGER,
+    indice_desanimo NUMERIC(5,2), -- escala 0-10
+    factor_principal_riesgo VARCHAR(200),
+    factores_json TEXT, -- [{variable, texto, peso_relativo, sugerencia}]
     recomendacion_pedagogica TEXT,
-    fecha_prediccion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    docente_tutor VARCHAR(60)
+    modelo_version VARCHAR(120),
+    fecha_prediccion TIMESTAMP,
+    docente_tutor VARCHAR(60),
+    fecha_alta TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Usuarios institucionales de la plataforma para autenticación JWT
