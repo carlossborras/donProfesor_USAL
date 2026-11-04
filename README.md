@@ -73,22 +73,22 @@ Pruebas: `pixi run test` (incluye `tests/test_auth_dashboards.py`, que usa una b
   - `vista_avisos_predictivos`: Estudiantes con indicadores prioritarios.
 - Registro inmutable de trazabilidad ética: `registro_accion_humana`.
 
-### 2. Modelo Predictivo Explicable (Persona 2 - Machine Learning)
-- Pipeline en Python con `scikit-learn` en `model/train_predict.py`.
-- Entrena modelos Random Forest para predecir las 7 variables objetivo:
-  - `prob_abandono_pct`, `prediccion_nota_t3`, `prediccion_faltas_t3`, `prob_perdida_beca_pct`, `prob_repeticion_pct`, `necesidad_intervencion`, `indice_desanimo`.
-- Extrae el factor principal de riesgo y genera recomendaciones pedagógicas contextualizadas.
-- Incluye checkpoint preentrenado en `model/checkpoints/donprofesor_rf_models.pkl` y dataset sintético completo en `data/ejemplo_50_alumnos_con_predicciones.csv`.
+### 2. Modelo predictivo (LightGBM + Random Forest, Persona 2)
+- Se entrena con `entrenadorModelo.py` (Carlos) y se guarda en `modelo.joblib` (ruta configurable con `DONPROFESOR_MODEL_PATH`).
+- **Cada vez que se da de alta, se importa (CSV o pegado) o se carga la muestra de un estudiante, la API ejecuta el modelo al momento** (`db/students.py` -> `model/predictor.py`) y guarda:
+  - probabilidades de abandono, pérdida de la beca Juntos (solo si la familia está en Juntos) y repetición;
+  - necesidad de intervención (Alta / Media / Baja);
+  - notas y faltas previstas de los tres trimestres e índice de desánimo (0-10);
+  - los 3 factores que más empujan la sugerencia de ese estudiante (por oclusión; el sexo nunca se usa como explicación) y una recomendación pedagógica.
+- Si el modelo no está disponible, el estudiante se guarda igual y sus predicciones quedan **pendientes** (nunca se inventan). Se calculan después con «Recalcular predicciones» o `pixi run recalcular`.
+- Umbrales de lectura (alto / medio), k-anonimato y moneda del simulador se configuran en `.env` (ver `.env.example`).
 
 Comandos del modelo:
 ```bash
-# Entrenar con dataset
-pixi run train
-# o: pixi run python -m model.train_predict --action train --dataset data/tu_dataset.csv
-
-# Predecir sobre nuevos alumnos sin notas de T3
-pixi run predict
-# o: pixi run python -m model.train_predict --action predict --input nuevos_alumnos.csv --output con_predicciones.csv
+pixi run train            # reentrena con entrenadorModelo.py (deja el .joblib en la raíz)
+pixi run modelo-estado    # comprueba que la API puede cargar el modelo
+pixi run recalcular       # recalcula las predicciones de todos los estudiantes
+pixi run python -m scripts.predicciones recalcular --solo-pendientes
 ```
 
 ### 3. Agente ReAct con LangGraph y LLM Qwen (Bloque Chat MCP)
@@ -101,22 +101,15 @@ pixi run predict
 
 ## Carga e Importación de Datos
 
-### Importar el CSV con datos reales del Reto 13
-```bash
-pixi run python db/import_csv.py --csv data/ejemplo_50_alumnos_con_predicciones.csv
-```
-*(También se puede cargar arrastrando el archivo en el botón "Subir CSV" de la barra superior de la web)*.
+Desde la barra superior de la web (siempre dentro del ámbito de tu sesión):
+- **+ Añadir estudiante**: formulario generado a partir de los campos del modelo, o pegar filas desde una hoja de cálculo.
+- **Importar CSV**: CSV/TSV con cabecera; la columna `alumno_id` es obligatoria. El docente solo puede cargar en su grupo, el director en su escuela y el delegado en su UGEL (las filas de otra UGEL se rechazan).
+- **Cargar datos de demostración**: copia `data/muestra_30_alumnos_peru.csv` en tu ámbito.
+- **Limpiar datos**: borra solo los estudiantes de tu ámbito.
 
-### Cargar 30 alumnos de prueba para demostración instantánea
-Haz clic en el botón **"Cargar 30 alumnos de prueba"** en la barra superior de la interfaz web, o ejecuta:
+Por línea de comandos:
 ```bash
-pixi run python db/import_csv.py --sample 30
-```
-
-### Vaciar la base de datos (volver a estado limpio)
-Haz clic en **"Vaciar BD"** en la interfaz web, o ejecuta:
-```bash
-pixi run python db/import_csv.py --clear
+pixi run python -m scripts.predicciones cargar --csv data/muestra_30_alumnos_peru.csv --escuela ESC-01 --ugel "UGEL Cusco"
 ```
 
 ---
@@ -133,11 +126,12 @@ pixi run test
 # Reconstruir el bundle de React
 pixi run build
 
-# Entrenar modelos de Machine Learning
+# Reentrenar el modelo (entrenadorModelo.py)
 pixi run train
 
-# Generar predicciones con el modelo
-pixi run predict
+# Estado del modelo y recálculo de predicciones
+pixi run modelo-estado
+pixi run recalcular
 ```
 
 ---
