@@ -1,12 +1,8 @@
 """
-DONPROFESOR (#Hack4Edu) · Agente de Chat Pedagógico conectado al Servidor MCP de Base de Datos.
+DONPROFESOR (#Hack4Edu 2026, Reto 13) · Agente de Chat Pedagógico conectado al Servidor MCP.
 Usa las 3 herramientas estándar del Servidor MCP (`list_tables`, `describe_table`, `read_query`)
 para consultar en tiempo real las vistas SQL permitidas para el rol activo y generar una
 respuesta en lenguaje humano, sin emoticonos y garantizando supervisión docente.
-
-Si existe GEMINI_API_KEY en el entorno, utiliza el modelo de Gemini con llamada a las tools del MCP;
-si no hay clave configurada en el entorno local del compañero, ejecuta automáticamente el planificador
-de consultas SQL sobre las mismas tools del MCP para que el Chat funcione siempre con datos reales de la BD.
 """
 
 from __future__ import annotations
@@ -33,7 +29,7 @@ def answer_pedagogical_chat_with_mcp(
     primary_view = mcp_tables[0]["table_or_view"]
     mcp_schema = describe_table(rol_norm, primary_view)
 
-    # Guardia ética ante peticiones de decisiones automáticas punitivas o acceso fuera de rol
+    # Guardia ética ante peticiones de decisiones automáticas punitivas
     forbidden_terms = [
         "expulsar",
         "reprobar automáticamente",
@@ -48,7 +44,7 @@ def answer_pedagogical_chat_with_mcp(
                 "Como herramienta de apoyo pedagógico, DONPROFESOR no realiza clasificaciones punitivas, "
                 "rankings de estudiantes ni toma decisiones automáticas sobre evaluaciones o sanciones. "
                 "Puedo ayudarte a consultar los factores de contexto de tu ámbito autorizado (como el impacto "
-                "de las lluvias en el traslado, el calendario agrícola o la disponibilidad de recursos en el centro) "
+                "del tiempo de desplazamiento, la situación económica o las necesidades de apoyo escolar) "
                 "para planificar medidas de acompañamiento docente."
             ),
             "mcp_trace": {
@@ -59,13 +55,13 @@ def answer_pedagogical_chat_with_mcp(
             },
         }
 
-    # Si el usuario intenta explícitamente consultar datos de otro rol no autorizado
-    if rol_norm == "docente" and ("300 escuelas" in q_lower or "vista_delegado" in q_lower):
+    # Bloqueo estricto si el rol docente intenta consultar datos de delegados o directores
+    if rol_norm == "docente" and ("vista_delegado" in q_lower or "todas las escuelas" in q_lower):
         denied = read_query(rol_norm, ambito_id, "SELECT * FROM vista_delegado")
         return {
             "reply": (
                 f"El servidor MCP ha rechazado la consulta porque tu sesión actual ({rol_norm}) "
-                "solo cuenta con permisos de lectura (GRANT SELECT) sobre los datos de tu grupo de tutoría "
+                "solo cuenta con permisos de lectura (GRANT SELECT) sobre los datos de tu aula "
                 "(`vista_docente` y `vista_avisos_predictivos`)."
             ),
             "mcp_trace": {
@@ -76,124 +72,108 @@ def answer_pedagogical_chat_with_mcp(
             },
         }
 
-    # Construcción de la consulta SQL apropiada usando las vistas del MCP según el rol y la pregunta
+    # Construcción de la consulta SQL real usando las vistas autorizadas del MCP
     if rol_norm == "docente":
-        if any(w in q_lower for w in ["lluvia", "traslado", "distancia", "3 km", "3km", "faltas", "ausencia"]):
+        if any(w in q_lower for w in ["distancia", "desplazamiento", "traslado", "tiempo", "km", "3 km", "3km", "camino"]):
             sql = (
-                "SELECT codigo_seguimiento, distancia_km, faltas_dias_lluvia, faltas_semanas_cosecha, "
-                "tiene_beca, continuidad_entregas_pct, nota_media "
-                "FROM vista_docente WHERE grupo_id = 'ESC-01-2B' AND distancia_km >= 3.0 "
-                "ORDER BY faltas_dias_lluvia DESC"
+                "SELECT alumno_id, distancia_hogar_escuela_km, tiempo_desplazamiento, faltas_totales_calculadas, "
+                "asistencia_pct_calculada, nota_trimestre_2_0_20, beneficiario_juntos "
+                "FROM vista_docente WHERE distancia_hogar_escuela_km >= 3.0 "
+                "ORDER BY faltas_totales_calculadas DESC LIMIT 10;"
             )
-            res = read_query(rol_norm, ambito_id, sql)
-            rows = res.get("rows", [])
-            codigos = ", ".join(r["codigo_seguimiento"] for r in rows[:5])
-            reply_text = (
-                f"He consultado `vista_docente` mediante el servidor MCP y se identifican {len(rows)} estudiantes "
-                f"en el grupo 2º B cuyo trayecto al centro supera los 3 kilómetros ({codigos}). "
-                "Sus ausencias se concentran en jornadas de lluvia (entre 4 y 7 días), pero mantienen un promedio de "
-                "continuidad en entregas superior al 75%. Se sugiere entregarles las guías modulares impresas los viernes "
-                "previos a semanas lluviosas y organizar sesiones por estaciones de trabajo en clase para no retrasar el ritmo grupal."
-            )
-        elif any(w in q_lower for w in ["cosecha", "agrícola", "agricola", "empleo", "tarde", "beca"]):
+        elif any(w in q_lower for w in ["trabajo", "juntos", "beca", "subsidio", "economía", "horas"]):
             sql = (
-                "SELECT codigo_seguimiento, apoyo_cosecha_familiar, segundo_empleo_familiar, tiene_beca, "
-                "faltas_semanas_cosecha, continuidad_entregas_pct, tendencia_notas "
-                "FROM vista_docente WHERE grupo_id = 'ESC-01-2B' "
-                "AND (apoyo_cosecha_familiar = 1 OR segundo_empleo_familiar = 1)"
+                "SELECT alumno_id, beneficiario_juntos, horas_trabajo_semanal, prob_perdida_beca_pct, "
+                "asistencia_pct_calculada, promedio_notas_calculado "
+                "FROM vista_docente WHERE horas_trabajo_semanal > 0 OR beneficiario_juntos = 1 "
+                "ORDER BY horas_trabajo_semanal DESC LIMIT 10;"
             )
-            res = read_query(rol_norm, ambito_id, sql)
-            rows = res.get("rows", [])
-            con_beca = sum(1 for r in rows if r["tiene_beca"] == 1)
-            reply_text = (
-                f"Según los registros de `vista_docente` en tu tutoría (2º B), hay {len(rows)} estudiantes que "
-                "compaginan las clases con apoyo en temporada de cosecha o trabajo familiar vespertino. "
-                f"Los datos muestran que en los {con_beca} casos que cuentan con beca activa, la continuidad de entregas "
-                "se mantiene por encima del 83%. Para estas dos semanas de calendario agrícola se recomienda "
-                "escalonar las entregas quincenalmente y resolver los ejercicios prácticos dentro del horario de aula."
+        elif any(w in q_lower for w in ["nota", "rendimiento", "promedio", "calificación", "t3", "trimestre"]):
+            sql = (
+                "SELECT alumno_id, nota_trimestre_1_0_20, nota_trimestre_2_0_20, promedio_notas_calculado, "
+                "prediccion_nota_t3, prob_repeticion_pct "
+                "FROM vista_docente ORDER BY promedio_notas_calculado ASC LIMIT 10;"
             )
         else:
             sql = (
-                "SELECT titulo_humano, categoria_contexto, factor_1_texto, recomendacion_pedagogica "
-                "FROM vista_avisos_predictivos WHERE rol_destino = 'docente' AND grupo_id = 'ESC-01-2B'"
-            )
-            res = read_query(rol_norm, ambito_id, sql)
-            rows = res.get("rows", [])
-            reply_text = (
-                f"Consultando `vista_avisos_predictivos` para tu grupo 2º B ({len(rows)} observaciones activas), "
-                "las prioridades para esta semana son: 1) Facilitar guías descargables a los 4 estudiantes que residen "
-                "a más de 3 km ante las lluvias previstas, 2) Aprovechar la franja libre del jueves en el aula digital "
-                "para la unidad práctica de Ciencias (donde la participación del grupo sube al 84%), y 3) Flexibilizar "
-                "los plazos de entrega durante las semanas de apoyo agrícola comarcal."
+                "SELECT alumno_id, necesidad_intervencion, prob_abandono_pct, prediccion_nota_t3, "
+                "factor_principal_riesgo, recomendacion_pedagogica "
+                "FROM vista_avisos_predictivos LIMIT 10;"
             )
 
     elif rol_norm == "director":
-        if any(w in q_lower for w in ["recurso", "tablet", "digital", "formación", "formacion", "1º", "primero", "laboratorio"]):
+        if any(w in q_lower for w in ["grado", "grupo", "sección", "comparativa", "aula"]):
             sql = (
-                "SELECT nombre_grupo, docente_tutor, horas_formacion_docente, uso_recursos_aula_pct, "
-                "brecha_recursos_sin_usar_pct, participacion_aula_pct, nota_media_grupo "
-                "FROM vista_director WHERE escuela_id = 'ESC-01' ORDER BY uso_recursos_aula_pct ASC"
-            )
-            res = read_query(rol_norm, ambito_id, sql)
-            rows = res.get("rows", [])
-            reply_text = (
-                "Al consultar `vista_director` a través del servidor MCP, se observa una asimetría clara dentro de la "
-                "I.E. Valle Verde: aunque el centro tiene un 84% de dispositivos operativos, en 1º Secundaria A y B "
-                "el uso en aula es del 34% y 38% (sus tutores registran 9h y 10,5h de formación práctica), mientras que "
-                "en 3º Secundaria A (con 26h de formación práctica) el uso alcanza el 78% y la participación sube al 82%. "
-                "La medida de mayor impacto para la dirección es programar dos sesiones quincenales de acompañamiento "
-                "entre pares entre el profesorado de 3º y el de 1º grado."
+                "SELECT escuela_id, grado_secundaria, total_estudiantes, asistencia_media_pct, "
+                "promedio_notas, conectividad_hogar_pct, casos_prioridad_alta "
+                "FROM vista_director ORDER BY grado_secundaria ASC;"
             )
         else:
             sql = (
-                "SELECT etiqueta_semana, mm_lluvia, es_semana_cosecha, asistencia_semanal_pct, uso_recursos_semanal_pct "
-                "FROM vista_director_clima WHERE escuela_id = 'ESC-01' ORDER BY semana_num ASC"
-            )
-            res = read_query(rol_norm, ambito_id, sql)
-            rows = res.get("rows", [])
-            reply_text = (
-                "Cruzando la serie de `vista_director_clima` mediante MCP (12 semanas registradas), se comprueba que "
-                "la asistencia del centro se mantiene por encima del 90% en semanas secas, pero desciende hasta el 72,4% "
-                "entre las semanas 5 y 7 cuando coinciden precipitaciones superiores a 65 mm con la temporada de cosecha. "
-                "A partir de la semana 8, tras activar los cuadernillos offline y el seguimiento con familias, la asistencia "
-                "se recupera progresivamente hasta el 91,8%."
+                "SELECT escuela_id, grado_secundaria, total_estudiantes, asistencia_media_pct, "
+                "promedio_notas, prob_abandono_media_pct, total_beneficiarios_juntos "
+                "FROM vista_director ORDER BY casos_prioridad_alta DESC;"
             )
 
-    else:  # delegado territorial
-        sql = (
-            "SELECT nombre_escuela, zona, conectividad_pct, dispositivos_disponibles_pct, "
-            "tasa_uso_recursos_pct, brecha_uso_equipamiento_pct, horas_formacion_docente_media, "
-            "asistencia_media_pct, aprendizaje_medio_pts "
-            "FROM vista_delegado ORDER BY brecha_uso_equipamiento_pct DESC"
-        )
-        res = read_query(rol_norm, ambito_id, sql)
-        rows = res.get("rows", [])
+    else:  # DELEGADO / UGEL
+        if any(w in q_lower for w in ["rural", "urbana", "zona", "brecha"]):
+            sql = (
+                "SELECT ugel, distrito, escuela_id, zona_escuela, total_estudiantes, "
+                "asistencia_media_pct, promedio_notas, conectividad_hogar_pct "
+                "FROM vista_delegado ORDER BY zona_escuela ASC, asistencia_media_pct ASC;"
+            )
+        else:
+            sql = (
+                "SELECT ugel, distrito, escuela_id, zona_escuela, total_estudiantes, "
+                "asistencia_media_pct, promedio_notas, casos_prioridad_alta, prob_abandono_media_pct "
+                "FROM vista_delegado ORDER BY casos_prioridad_alta DESC;"
+            )
+
+    res = read_query(rol_norm, ambito_id, sql)
+    rows = res.get("rows", [])
+    num_rows = len(rows)
+
+    if num_rows == 0:
         reply_text = (
-            f"Consultando `vista_delegado` ({len(rows)} centros cabecera con k-anonimato >= 15 garantizado), "
-            "el diagnóstico territorial distingue dos necesidades diferentes: "
-            "1) En los centros rurales con menor asistencia (Escuela Ribereña San Juan 74,5%, Las Cumbres 75,2% y Río Alto 76,8%), "
-            "la prioridad es asignar becas de transporte/comedor y servidores locales sin conexión. "
-            "2) En los centros con alta brecha entre equipamiento disponible y uso real (Pampa Blanca con 49 puntos de brecha y "
-            "Valle Verde con 31,5 puntos), invertir en brigadas de formación docente práctica rinde tres veces más mejora en "
-            "aprendizaje que comprar nuevo equipamiento."
+            f"He ejecutado la herramienta MCP `read_query` sobre `{primary_view}`, pero la base de datos "
+            "actualmente no contiene registros que coincidan con la consulta (0 filas devueltas). "
+            "La base de datos está inicializada y lista para recibir la importación de datos reales."
         )
+    else:
+        if rol_norm == "docente":
+            codigos = ", ".join(r["alumno_id"] for r in rows[:4])
+            reply_text = (
+                f"Consultando la vista `{primary_view}` mediante el servidor MCP ({num_rows} registros encontrados, "
+                f"ejemplos: {codigos}), se identifican factores relevantes de asistencia y contexto. "
+                "La recomendación pedagógica es coordinar entrevistas formativas con las familias y flexibilizar "
+                "los mecanismos de entrega para garantizar la permanencia escolar."
+            )
+        elif rol_norm == "director":
+            reply_text = (
+                f"A través de `{primary_view}` con MCP, se han consultado {num_rows} cohortes del centro educativo. "
+                "Los datos consolidados permiten a la dirección priorizar recursos en aquellos grados con mayor "
+                "índice de ausentismo o menor conectividad en hogar."
+            )
+        else:
+            reply_text = (
+                f"A nivel territorial mediante `{primary_view}`, se identifican {num_rows} escuelas en la red. "
+                "La información orienta la asignación equitativa de subsidios de transporte escolar y conectividad."
+            )
 
-    # Si el usuario ha configurado GEMINI_API_KEY, enriquecer la redacción con Gemini manteniendo los datos exactos del MCP
+    # Si existe clave de Gemini, enriquecer la respuesta con el LLM
     api_key = os.environ.get("GEMINI_API_KEY")
-    if api_key:
+    if api_key and num_rows > 0:
         try:
             from google import genai
-
             client = genai.Client(api_key=api_key)
             prompt = (
-                "Eres el asistente pedagógico de la plataforma DONPROFESOR (#Hack4Edu). "
-                "Responde en español claro, cercano, profesional y pensado para docentes, SIN usar ningún emoticono ni emoji. "
-                "Recuerda siempre que la decisión final corresponde al criterio humano del profesional educativo.\n\n"
-                f"Rol activo: {rol_norm} (Ámbito: {ambito_id})\n"
-                f"Pregunta del usuario: {question}\n"
-                f"Consulta SQL ejecutada vía MCP: {sql}\n"
-                f"Datos devueltos por la vista SQL: {json.dumps(res.get('rows', [])[:10], ensure_ascii=False)}\n"
-                f"Síntesis base: {reply_text}"
+                "Eres el asistente pedagógico de DONPROFESOR (#Hack4Edu 2026). "
+                "Responde en español profesional y cercano, SIN ningún emoticono ni emoji. "
+                "Recuerda que la decisión final corresponde al criterio humano docente.\n\n"
+                f"Rol: {rol_norm} | Ámbito: {ambito_id}\n"
+                f"Pregunta: {question}\n"
+                f"SQL ejecutado vía MCP: {sql}\n"
+                f"Datos SQL: {json.dumps(rows[:8], ensure_ascii=False)}\n"
             )
             gem_resp = client.models.generate_content(
                 model="gemini-2.5-flash",
@@ -211,8 +191,7 @@ def answer_pedagogical_chat_with_mcp(
             "allowed_views": [t["table_or_view"] for t in mcp_tables],
             "tools_called": ["list_tables", "describe_table", "read_query"],
             "inspected_view": primary_view,
-            "inspected_columns_count": len(mcp_schema.get("columns", [])),
             "sql_executed": sql,
-            "rows_returned": len(res.get("rows", [])),
+            "rows_returned": num_rows,
         },
     }

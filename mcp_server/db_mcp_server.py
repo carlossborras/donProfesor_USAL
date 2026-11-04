@@ -1,10 +1,10 @@
 """
-DONPROFESOR (#Hack4Edu) · Servidor MCP de Base de Datos (Persona 3).
-Conecta el modelo de lenguaje (LLM) del Chat con la Base de Datos de forma segura,
-respetando los permisos por rol (GRANT SELECT simulado/aplicado sobre las vistas de cada rol):
-- Rol 'docente'   -> solo puede consultar vista_docente y vista_avisos_predictivos de su grupo.
-- Rol 'director'  -> solo puede consultar vista_director, vista_director_clima y vista_avisos_predictivos de su escuela.
-- Rol 'delegado'  -> solo puede consultar vista_delegado y vista_avisos_predictivos a nivel regional (k-anonimato >= 15).
+DONPROFESOR (#Hack4Edu 2026, Reto 13) · Servidor MCP de Base de Datos Real (Persona 3).
+Conecta el modelo de lenguaje (LLM) del Chat con la Base de Datos real mediante Model Context Protocol,
+respetando estrictamente los permisos por rol sobre las vistas de seguridad:
+- Rol 'docente'   -> solo puede consultar vista_docente y vista_avisos_predictivos.
+- Rol 'director'  -> solo puede consultar vista_director y vista_avisos_predictivos de su escuela.
+- Rol 'delegado'  -> solo puede consultar vista_delegado y vista_avisos_predictivos a nivel territorial.
 
 Expone las 3 herramientas estándar de Base de Datos en MCP:
 1. list_tables(rol)
@@ -16,49 +16,51 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Any
 from mcp.server.mcpserver import MCPServer
-from db.seed_db import get_sqlite_connection, init_and_seed_database
+from db.seed_db import init_and_seed_database
+from db.adapter import db_adapter
 
 mcp = MCPServer("donprofesor-db-mcp")
 
 # Mapa estricto de control de acceso basado en rol (RBAC / GRANT SELECT por vista)
 ROLE_ALLOWED_VIEWS: Dict[str, List[str]] = {
     "docente": ["vista_docente", "vista_avisos_predictivos"],
-    "director": ["vista_director", "vista_director_clima", "vista_avisos_predictivos"],
+    "director": ["vista_director", "vista_avisos_predictivos"],
     "delegado": ["vista_delegado", "vista_avisos_predictivos"],
 }
 
 VIEW_DESCRIPTIONS: Dict[str, str] = {
     "vista_docente": (
-        "Seguimiento contextual de los estudiantes del grupo tutorizado por el docente "
-        "(distancia_km, tiene_beca, apoyo_cosecha_familiar, segundo_empleo_familiar, "
-        "faltas_dias_lluvia, faltas_semanas_cosecha, participacion_actividades_pct, continuidad_entregas_pct, nota_media)."
+        "Seguimiento contextual de estudiantes por grado y escuela: "
+        "alumno_id, edad, grado_secundaria, distancia_hogar_escuela_km, tiempo_desplazamiento, "
+        "beneficiario_juntos, horas_trabajo_semanal, internet_hogar, tiempo_estudio_semanal, "
+        "faltas_trimestre_1, faltas_trimestre_2, faltas_totales_calculadas, asistencia_pct_calculada, "
+        "nota_trimestre_1_0_20, nota_trimestre_2_0_20, promedio_notas_calculado, "
+        "prediccion_nota_t3, prediccion_faltas_t3, prob_perdida_beca_pct, prob_repeticion_pct, "
+        "prob_abandono_pct, necesidad_intervencion, indice_desanimo, factor_principal_riesgo, recomendacion_pedagogica."
     ),
     "vista_director": (
-        "Indicadores agregados por grupo/aula del centro educativo con k >= 5 "
-        "(asistencia_media_pct, participacion_aula_pct, uso_recursos_aula_pct, "
-        "brecha_recursos_sin_usar_pct, horas_formacion_docente, vinculo_familiar_pct, nota_media_grupo)."
-    ),
-    "vista_director_clima": (
-        "Serie temporal semanal del centro educativo que cruza asistencia_semanal_pct "
-        "con mm_lluvia, es_semana_cosecha, uso_recursos_semanal_pct y participacion_semanal_pct."
+        "Indicadores agregados por grado y centro educativo: "
+        "escuela_id, grado_secundaria, total_estudiantes, asistencia_media_pct, promedio_notas, "
+        "conectividad_hogar_pct, horas_estudio_media, total_beneficiarios_juntos, "
+        "casos_prioridad_alta, casos_prioridad_media, casos_prioridad_baja, prob_abandono_media_pct, indice_desanimo_medio."
     ),
     "vista_delegado": (
-        "Indicadores agregados de los centros educativos de la red territorial con k >= 15 "
-        "(zona, conectividad_pct, dispositivos_disponibles_pct, tasa_uso_recursos_pct, "
-        "brecha_uso_equipamiento_pct, horas_formacion_docente_media, asistencia_media_pct, aprendizaje_medio_pts)."
+        "Indicadores territoriales por UGEL, distrito y escuela (rural vs urbana): "
+        "ugel, distrito, escuela_id, zona_escuela, total_estudiantes, asistencia_media_pct, promedio_notas, "
+        "conectividad_hogar_pct, distancia_media_km, total_beneficiarios_juntos, casos_prioridad_alta, prob_abandono_media_pct."
     ),
     "vista_avisos_predictivos": (
-        "Avisos generados por el modelo predictivo explicable con sus 3 factores de mayor peso "
-        "(factor_1_texto, factor_2_texto, factor_3_texto), recomendacion_pedagogica y estado_revision."
+        "Casos prioritarios detectados por el modelo predictivo con necesidad de intervención: "
+        "alumno_id, escuela_id, grado_secundaria, necesidad_intervencion, prob_abandono_pct, "
+        "prediccion_nota_t3, prediccion_faltas_t3, prob_perdida_beca_pct, prob_repeticion_pct, "
+        "indice_desanimo, factor_principal_riesgo, recomendacion_pedagogica."
     ),
 }
 
 
 @mcp.tool()
 def list_tables(rol: str = "docente") -> List[Dict[str, str]]:
-    """
-    Devuelve la lista de vistas SQL sobre las cuales el rol actual tiene permiso GRANT SELECT.
-    """
+    """Devuelve la lista de vistas SQL sobre las cuales el rol actual tiene permiso GRANT SELECT."""
     init_and_seed_database()
     rol_norm = rol.lower().strip()
     allowed = ROLE_ALLOWED_VIEWS.get(rol_norm, ROLE_ALLOWED_VIEWS["docente"])
@@ -75,10 +77,7 @@ def list_tables(rol: str = "docente") -> List[Dict[str, str]]:
 
 @mcp.tool()
 def describe_table(rol: str, table_name: str) -> Dict[str, Any]:
-    """
-    Devuelve las columnas y tipos de datos de una vista autorizada para el rol actual.
-    Rechaza el acceso si la tabla o vista no pertenece al ámbito del rol.
-    """
+    """Devuelve las columnas y tipos de datos de una vista autorizada para el rol actual."""
     init_and_seed_database()
     rol_norm = rol.lower().strip()
     allowed = ROLE_ALLOWED_VIEWS.get(rol_norm, [])
@@ -90,14 +89,15 @@ def describe_table(rol: str, table_name: str) -> Dict[str, Any]:
             )
         }
 
-    conn = get_sqlite_connection()
-    cur = conn.cursor()
-    cur.execute(f"PRAGMA table_info({table_name});")
-    cols = [
-        {"column_name": row["name"], "data_type": row["type"]}
-        for row in cur.fetchall()
-    ]
-    conn.close()
+    try:
+        rows = db_adapter.fetch_all(f"PRAGMA table_info({table_name});")
+        cols = [
+            {"column_name": r.get("name") or r.get("column_name"), "data_type": r.get("type") or r.get("data_type", "TEXT")}
+            for r in rows
+        ]
+    except Exception:
+        cols = []
+
     return {
         "view_name": table_name,
         "db_role": f"role_{rol_norm}",
@@ -109,8 +109,8 @@ def describe_table(rol: str, table_name: str) -> Dict[str, Any]:
 @mcp.tool()
 def read_query(rol: str, ambito_id: str, sql_query: str) -> Dict[str, Any]:
     """
-    Ejecuta una consulta SQL SELECT de solo lectura sobre las vistas autorizadas para el rol.
-    Bloquea cualquier instrucción que no sea SELECT o que intente acceder a tablas fuera de las vistas del rol.
+    Ejecuta una consulta SQL SELECT de solo lectura sobre las vistas autorizadas para el rol en la base de datos real.
+    Bloquea cualquier instrucción que no sea SELECT o que intente acceder a tablas no autorizadas.
     """
     init_and_seed_database()
     rol_norm = rol.lower().strip()
@@ -131,15 +131,11 @@ def read_query(rol: str, ambito_id: str, sql_query: str) -> Dict[str, Any]:
 
     # Comprobar que solo se consultan las vistas permitidas para ese rol
     all_known_objects = [
-        "escuela",
-        "grupo_aula",
-        "calendario_entorno",
-        "alumno_contexto",
-        "prediccion",
+        "alumnos_hack4edu",
         "usuario_plataforma",
+        "registro_accion_humana",
         "vista_docente",
         "vista_director",
-        "vista_director_clima",
         "vista_delegado",
         "vista_avisos_predictivos",
     ]
@@ -152,22 +148,17 @@ def read_query(rol: str, ambito_id: str, sql_query: str) -> Dict[str, Any]:
                 )
             }
 
-    conn = get_sqlite_connection()
-    cur = conn.cursor()
     try:
-        cur.execute(sql_clean)
-        rows = [dict(r) for r in cur.fetchall()[:50]]
-        conn.close()
+        rows = db_adapter.fetch_all(sql_clean)
         return {
             "executed_sql": sql_clean,
             "db_role": f"role_{rol_norm}",
             "ambito_id": ambito_id,
             "row_count": len(rows),
-            "rows": rows,
+            "rows": rows[:50],
         }
     except Exception as exc:
-        conn.close()
-        return {"error": f"Error al ejecutar consulta en vista SQL: {exc}"}
+        return {"error": f"Error al ejecutar consulta en vista SQL real: {exc}"}
 
 
 if __name__ == "__main__":

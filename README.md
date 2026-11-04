@@ -1,118 +1,84 @@
-# DONPROFESOR — Plataforma de Analítica Educativa Acompañada (#Hack4Edu)
+# DONPROFESOR — Plataforma de Analítica Educativa Acompañada (#Hack4Edu 2026, Reto 13)
 
 Solución integral desarrollada para el reto de **#Hack4Edu** (ProFuturo) que transforma los datos escolares sobre **asistencia, aprendizaje, formación docente, utilización de recursos y participación** en información comprensible y recomendaciones útiles para **docentes, directores y responsables educativos (delegados territoriales)**, evitando decisiones automáticas sobre estudiantes y garantizando la privacidad de la información desde el motor de base de datos.
 
 ---
 
-## Arquitectura del Sistema (Persona 3 y Persona 4)
+## Arquitectura de 2 Bloques Conectados a 1 Única Base de Datos Real
 
-El sistema se divide en **dos grandes flujos** conectados a la Base de Datos mediante un **Adaptador Desacoplado (`db/adapter.py`)** con control de acceso por rol:
+El sistema está conectado directamente a la **Base de Datos real** (0 simulación hardcodeada), con esquema preparado para las **37 variables oficiales del Reto 13**:
 
-1. **Adaptador de Base de Datos Provisional -> Definitiva (`db/adapter.py`):**
-   - Mientras el compañero encargado de la base de datos finaliza la carga definitiva, la plataforma arranca automáticamente en **modo provisional (`PROVISIONAL_SQLITE_SEED`)** con las vistas `vista_docente`, `vista_director`, `vista_director_clima`, `vista_delegado` y `vista_avisos_predictivos` listas desde el minuto uno.
-   - En cuanto esté disponible la base de datos PostgreSQL definitiva del equipo, basta con definir la variable de entorno `DATABASE_URL=postgresql://usuario:clave@host:5432/donprofesor` y el adaptador conmuta automáticamente sin tocar ni una línea de React ni de FastAPI.
+1. **Las 30 variables de entrada (Bloques A–H):**
+   - **Identificación:** `alumno_id`, `escuela_id`, `ugel`, `distrito`, `zona_escuela`
+   - **Demografía:** `sexo`, `edad`, `grado_secundaria`, `tamano_familia`
+   - **Contexto educativo familiar:** `educacion_madre_0_4`, `educacion_padre_0_4`, `ocupacion_madre`, `ocupacion_padre`, `internet_hogar`, `tiempo_estudio_semanal`
+   - **Accesibilidad y trayectoria:** `tiempo_desplazamiento`, `distancia_hogar_escuela_km`, `repeticiones_previas`, `apoyo_escolar`, `apoyo_familiar`
+   - **Situación económica:** `beneficiario_juntos`, `horas_trabajo_semanal`
+   - **Asistencia escolar:** `dias_lectivos_previstos`, `faltas_trimestre_1`, `faltas_trimestre_2`
+   - **Rendimiento académico:** `nota_trimestre_1_0_20`, `nota_trimestre_2_0_20` (escala vigesimal 0-20 oficial de Perú)
+   - **Variables calculadas:** `faltas_totales_calculadas`, `asistencia_pct_calculada`, `promedio_notas_calculado`
 
-2. **Aplicación React Modular con los 3 Paneles y el Modelo Predictivo (`web/frontend/` + `GET /api/panel`):**
-   - Arquitectura limpia de componentes React en `web/frontend/src/components/`:
-     - `EthicalBanner.jsx`: Aviso pedagógico fijo (*«La decisión es tuya; el modelo puede equivocarse»*), estado del adaptador de BD y permisos SQL activos.
-     - `Navbar.jsx`: Selector de los 3 paneles por rol y sesión JWT.
-     - `KpiGrid.jsx`: Indicadores de las 5 dimensiones educativas del reto.
-     - `PredictiveAlertsPanel.jsx`: Tarjetas de observaciones del modelo predictivo con los **3 factores explicativos que más pesan** en texto humano y botón para registrar la decisión profesional.
-     - `RainHarvestChart.jsx`: **Gráfica estrella** interactiva que superpone asistencia semanal, lluvia (mm), semanas de cosecha comarcal y utilización de recursos.
-     - `RoleViews.jsx`:
-       - **Panel Docente (`DocenteContextTable`):** Su clase (`2º Secundaria B`), filtros contextuales (distancia > 3 km / lluvia, cosecha, beca protectora), **sin rankings ni colores de semáforo por alumno**.
-       - **Panel Dirección (`DirectorGroupsTable`):** Comparativa agregada entre grupos del centro, horas de formación docente práctica y brecha de uso de recursos.
-       - **Panel Delegado Territorial (`DelegadoTerritorialView`):** Mapa espacial de escuelas con brechas de conectividad y **simulador interactivo de reparto de subvenciones**.
-     - `McpChatSidebar.jsx`: Panel lateral de consulta en lenguaje natural conectado al Servidor MCP con visualización de la traza SQL ejecutada.
-     - `Modals.jsx`: Modal de cambio de sesión JWT por rol y modal de registro de decisiones humanas.
-
-3. **Chat con Modelo de Lenguaje (LLM) conectado a la Base de Datos vía MCP (`POST /api/chat-mcp`):**
-   - Servidor **MCP (`Model Context Protocol`)** en `mcp_server/db_mcp_server.py` que expone las 3 herramientas estándar:
-     - `list_tables(rol)`
-     - `describe_table(rol, table_name)`
-     - `read_query(rol, ambito_id, sql_query)`
-   - Cada consulta respeta estrictamente el rol del token JWT (`role_docente`, `role_director`, `role_delegado`) y solo tiene permiso `GRANT SELECT` sobre las vistas autorizadas de ese rol.
+2. **Las 7 variables de salida del Modelo Predictivo (Bloque I):**
+   - `prob_abandono_pct`, `prediccion_nota_t3`, `prediccion_faltas_t3`, `prob_perdida_beca_pct`, `prob_repeticion_pct`, `necesidad_intervencion`, `indice_desanimo`.
 
 ---
 
-## Estructura del Repositorio
+## Flujos del Sistema (Persona 3 y Persona 4)
 
-```text
-hack4edu/
-├── pixi.toml                           # Configuración del entorno reproducible y tareas Pixi
-├── pixi.lock                           # Bloqueo determinista multiplataforma (Windows, Linux, macOS)
-├── db/
-│   ├── adapter.py                      # Adaptador desacoplado (Semilla Provisional <-> PostgreSQL externo)
-│   ├── schema.sql                      # Esquema relacional de las 5 dimensiones + tabla prediccion
-│   ├── views_and_grants.sql            # Vistas SQL por rol (k-anonimato) y GRANT SELECT
-│   └── seed_db.py                      # Semilla provisional lista desde el minuto uno
-├── mcp_server/
-│   ├── db_mcp_server.py                # Servidor MCP de Base de Datos (list_tables, describe_table, read_query)
-│   └── chat_agent.py                   # Agente de Chat conectado al Servidor MCP (+ soporte Gemini API)
-├── api/
-│   └── main.py                         # FastAPI con JWT, Middleware de rol/ámbito y Endpoints del contrato
-├── web/
-│   ├── app.py                          # Lanzador directo con sys.path configurado para ejecución desde raíz
-│   └── frontend/                       # Aplicación React modular (Persona 4)
-│       ├── package.json
-│       ├── vite.config.js
-│       ├── index.html
-│       └── src/
-│           ├── main.jsx
-│           ├── App.jsx
-│           ├── services/api.js
-│           ├── styles/app.css
-│           └── components/
-│               ├── EthicalBanner.jsx
-│               ├── Navbar.jsx
-│               ├── KpiGrid.jsx
-│               ├── PredictiveAlertsPanel.jsx
-│               ├── RainHarvestChart.jsx
-│               ├── RoleViews.jsx
-│               ├── McpChatSidebar.jsx
-│               └── Modals.jsx
-├── tests/
-│   └── test_donprofesor.py             # Pruebas automatizadas de JWT, Vistas SQL, MCP, Adaptador BD y React
-├── Dockerfile
-└── docker-compose.yml                  # Despliegue completo con PostgreSQL + Aplicación
+- **Bloque 1 · Dashboard Web React (`web/frontend/`):**
+  - Consulta en tiempo real las vistas SQL (`vista_docente`, `vista_director`, `vista_delegado`, `vista_avisos_predictivos`).
+  - Si la base de datos está vacía (0 registros), muestra el estado limpio indicando que está lista para recibir datos.
+  - Al cargar los registros, calcula dinámicamente los promedios de asistencia, notas sobre 20, horas de estudio, estudiantes en Programa Juntos y alertas del modelo predictivo.
+- **Bloque 2 · Chat con LLM conectado vía MCP (`mcp_server/`):**
+  - El servidor MCP expone `list_tables`, `describe_table` y `read_query` con control estricto de ámbito por rol.
+  - El LLM ejecuta consultas SQL reales y devuelve respuestas comprensibles en lenguaje pedagógico humano.
+
+---
+
+## Carga e Importación de Datos
+
+### Importar el CSV del Reto 13
+Cuando el equipo tenga listo el CSV con los datos, se importa directamente con:
+```bash
+pixi run python db/import_csv.py --csv ruta/al/archivo.csv
+```
+*(También disponible vía API mediante `POST /api/datos/importar-csv`)*
+
+### Vaciar la base de datos (volver a estado limpio)
+```bash
+pixi run python db/import_csv.py --clear
+```
+
+### Generar datos de prueba realistas (opcional, para demos antes de la entrega final)
+```bash
+pixi run python db/import_csv.py --sample 40
 ```
 
 ---
 
 ## Ejecución con Pixi
 
-El proyecto está gestionado con **[Pixi](https://pixi.sh)** para garantizar un entorno idéntico y sin conflictos entre Windows, Linux y macOS.
-
-### 1. Iniciar la plataforma (Backend + Frontend React)
 ```bash
+# Iniciar servidor y frontend React en http://localhost:8000
 pixi run start
-```
-Abre en el navegador: `http://localhost:8000`
 
-### 2. Ejecutar la suite de pruebas
-```bash
+# Ejecutar las pruebas automatizadas de integración
 pixi run test
+
+# Reconstruir el bundle de React
+pixi run build
 ```
 
-### 3. Regenerar la semilla provisional de Base de Datos
-```bash
-pixi run seed
-```
+---
 
-### 4. Conectar a la Base de Datos PostgreSQL definitiva del equipo
+## Conexión con PostgreSQL Externa
+Para conectar a la base de datos PostgreSQL definitiva del equipo, basta con configurar:
 ```bash
 # En PowerShell:
-$env:DATABASE_URL="postgresql://postgres:postgres@localhost:5432/donprofesor"
+$env:DATABASE_URL="postgresql://usuario:clave@host:5432/donprofesor"
 pixi run start
 
 # En Bash:
-export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/donprofesor"
+export DATABASE_URL="postgresql://usuario:clave@host:5432/donprofesor"
 pixi run start
-```
-
-### 5. Desarrollo Frontend con Vite (opcional)
-```bash
-cd web/frontend
-npm install
-npm run dev
 ```

@@ -157,12 +157,13 @@ export function App() {
               onOpenActionModal={(alertItem) => setSelectedAlert(alertItem)}
             />
 
-            {(activeRole === "docente" || activeRole === "director") && (
-              <RainHarvestChart
-                serie={panelData?.serie_lluvia_cosecha || []}
-                role={activeRole}
-              />
-            )}
+            {(activeRole === "docente" || activeRole === "director") &&
+              (panelData?.serie_lluvia_cosecha || []).length > 0 && (
+                <RainHarvestChart
+                  serie={panelData?.serie_lluvia_cosecha || []}
+                  role={activeRole}
+                />
+              )}
 
             {activeRole === "docente" && (
               <DocenteContextTable alumnos={panelData?.alumnos_contexto || []} />

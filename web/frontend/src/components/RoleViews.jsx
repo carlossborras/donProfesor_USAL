@@ -5,9 +5,10 @@ export function DocenteContextTable({ alumnos = [] }) {
   const [filterMode, setFilterMode] = useState("todos");
 
   const filtered = alumnos.filter((a) => {
-    if (filterMode === "lluvia") return a.distancia_km >= 3.0;
-    if (filterMode === "cosecha") return a.apoyo_cosecha_familiar === 1 || a.segundo_empleo_familiar === 1;
-    if (filterMode === "beca") return a.tiene_beca === 1;
+    if (filterMode === "distancia") return (a.distancia_hogar_escuela_km || 0) >= 3.0;
+    if (filterMode === "trabajo") return (a.horas_trabajo_semanal || 0) > 0;
+    if (filterMode === "juntos") return a.beneficiario_juntos === 1;
+    if (filterMode === "alerta") return a.necesidad_intervencion === "Alta" || a.necesidad_intervencion === "Media";
     return true;
   });
 
@@ -15,9 +16,9 @@ export function DocenteContextTable({ alumnos = [] }) {
     <div className="panel-card">
       <div className="panel-header">
         <div>
-          <h2>Seguimiento contextual del grupo 2º B (Sin rankings ni semáforos por estudiante)</h2>
+          <h2>Seguimiento contextual de estudiantes (30 variables oficiales · Reto 13)</h2>
           <p>
-            Muestra los factores contextuales de traslado, beca, apoyo agrícola y continuidad de entregas para orientar el acompañamiento.
+            Muestra el contexto de desplazamiento, subsidio Juntos, dedicación laboral y calificaciones vigesimales (0-20) sin semáforos estigmatizantes.
           </p>
         </div>
         <div className="filter-pills-row">
@@ -30,74 +31,128 @@ export function DocenteContextTable({ alumnos = [] }) {
           </button>
           <button
             type="button"
-            className={`btn-secondary ${filterMode === "lluvia" ? "active-filter" : ""}`}
-            onClick={() => setFilterMode("lluvia")}
+            className={`btn-secondary ${filterMode === "distancia" ? "active-filter" : ""}`}
+            onClick={() => setFilterMode("distancia")}
           >
-            Distancia &gt; 3 km
+            Distancia &ge; 3 km
           </button>
           <button
             type="button"
-            className={`btn-secondary ${filterMode === "cosecha" ? "active-filter" : ""}`}
-            onClick={() => setFilterMode("cosecha")}
+            className={`btn-secondary ${filterMode === "trabajo" ? "active-filter" : ""}`}
+            onClick={() => setFilterMode("trabajo")}
           >
-            Cosecha / Apoyo vespertino
+            Trabajo semanal (&gt; 0 h)
           </button>
           <button
             type="button"
-            className={`btn-secondary ${filterMode === "beca" ? "active-filter" : ""}`}
-            onClick={() => setFilterMode("beca")}
+            className={`btn-secondary ${filterMode === "juntos" ? "active-filter" : ""}`}
+            onClick={() => setFilterMode("juntos")}
           >
-            Con beca protectora
+            Programa Juntos
+          </button>
+          <button
+            type="button"
+            className={`btn-secondary ${filterMode === "alerta" ? "active-filter" : ""}`}
+            onClick={() => setFilterMode("alerta")}
+          >
+            Prioridad de apoyo
           </button>
         </div>
       </div>
 
       <div className="table-wrapper">
-        <table className="clean-table">
-          <thead>
-            <tr>
-              <th>Código Tutoría</th>
-              <th>Distancia</th>
-              <th>Factores Contextuales Observados</th>
-              <th>Cobertura de Apoyo</th>
-              <th>Participación Aula</th>
-              <th>Continuidad Entregas</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.slice(0, 14).map((a) => {
-              const factores = [];
-              if (a.distancia_km >= 3.0) {
-                factores.push(`Distancia ${a.distancia_km} km (${a.faltas_dias_lluvia} faltas lluvia)`);
-              }
-              if (a.apoyo_cosecha_familiar === 1) {
-                factores.push(`Calendario cosecha (${a.faltas_semanas_cosecha} faltas)`);
-              }
-              if (a.segundo_empleo_familiar === 1) {
-                factores.push("Apoyo laboral vespertino");
-              }
-              if (a.acceso_internet_hogar === 0) {
-                factores.push("Sin internet en hogar (requiere guía offline)");
-              }
-              if (factores.length === 0) {
-                factores.push("Trayecto cercano y asistencia regular");
-              }
+        {alumnos.length === 0 ? (
+          <div style={{ padding: "36px 20px", textAlign: "center", color: "#64748b" }}>
+            <h3 style={{ fontSize: "15px", color: "#334155", marginBottom: "6px" }}>Base de datos conectada · 0 estudiantes registrados</h3>
+            <p style={{ fontSize: "13px" }}>
+              La tabla <code>alumnos_hack4edu</code> está lista y limpia. En cuanto tu equipo entregue el archivo CSV o ejecute el modelo predictivo, aparecerán aquí todos los datos del aula.
+            </p>
+            <div style={{ marginTop: "12px", fontFamily: "monospace", fontSize: "12px", background: "#f1f5f9", display: "inline-block", padding: "6px 12px", borderRadius: "6px" }}>
+              Comando de carga: pixi run python db/import_csv.py --csv &lt;archivo.csv&gt;
+            </div>
+          </div>
+        ) : (
+          <table className="clean-table">
+            <thead>
+              <tr>
+                <th>Estudiante</th>
+                <th>Grado / Edad</th>
+                <th>Desplazamiento</th>
+                <th>Contexto / Subsidio</th>
+                <th>Asistencia (T1/T2)</th>
+                <th>Notas (0-20)</th>
+                <th>Proyección T3</th>
+                <th>Prioridad Modelo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.slice(0, 25).map((a) => {
+                const factores = [];
+                if ((a.distancia_hogar_escuela_km || 0) >= 3.0) {
+                  factores.push(`${a.distancia_hogar_escuela_km} km (${a.tiempo_desplazamiento || 0} min)`);
+                }
+                if ((a.horas_trabajo_semanal || 0) > 0) {
+                  factores.push(`Trabajo: ${a.horas_trabajo_semanal}h/sem`);
+                }
+                if (a.internet_hogar === 0) {
+                  factores.push("Sin internet");
+                }
+                if (factores.length === 0) {
+                  factores.push("Trayecto regular");
+                }
 
-              return (
-                <tr key={a.codigo_seguimiento}>
-                  <td>
-                    <strong>{a.codigo_seguimiento}</strong>
-                  </td>
-                  <td>{a.distancia_km} km</td>
-                  <td>{factores.join(" · ")}</td>
-                  <td>{a.tiene_beca === 1 ? "Beca activa (Factor protector)" : "Sin beca asignada"}</td>
-                  <td>{a.participacion_actividades_pct}%</td>
-                  <td>{a.continuidad_entregas_pct}%</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                return (
+                  <tr key={a.alumno_id}>
+                    <td>
+                      <strong>{a.alumno_id}</strong>
+                      <div style={{ fontSize: "11px", color: "#64748b" }}>{a.sexo === "M" ? "Varón" : "Mujer"}</div>
+                    </td>
+                    <td>{a.grado_secundaria}º Sec · {a.edad} años</td>
+                    <td>{factores.join(" · ")}</td>
+                    <td>
+                      {a.beneficiario_juntos === 1 ? (
+                        <span style={{ color: "#166534", fontWeight: 600 }}>Programa Juntos</span>
+                      ) : (
+                        <span style={{ color: "#64748b" }}>Sin subsidio</span>
+                      )}
+                    </td>
+                    <td>
+                      <div><strong>{a.asistencia_pct_calculada || 0}%</strong></div>
+                      <div style={{ fontSize: "11px", color: "#64748b" }}>
+                        Faltas: {a.faltas_totales_calculadas || 0} ({a.faltas_trimestre_1 || 0} T1 / {a.faltas_trimestre_2 || 0} T2)
+                      </div>
+                    </td>
+                    <td>
+                      <div><strong>{a.promedio_notas_calculado || 0}</strong> / 20</div>
+                      <div style={{ fontSize: "11px", color: "#64748b" }}>
+                        T1: {a.nota_trimestre_1_0_20 || "-"} · T2: {a.nota_trimestre_2_0_20 || "-"}
+                      </div>
+                    </td>
+                    <td>
+                      {a.prediccion_nota_t3 ? (
+                        <div>
+                          <div>Nota: <strong>{a.prediccion_nota_t3}</strong>/20</div>
+                          <div style={{ fontSize: "11px", color: "#64748b" }}>Faltas: ~{a.prediccion_faltas_t3 || 0}d</div>
+                        </div>
+                      ) : (
+                        <span style={{ color: "#94a3b8" }}>Pendiente</span>
+                      )}
+                    </td>
+                    <td>
+                      {a.necesidad_intervencion ? (
+                        <span className="tag-context">
+                          {a.necesidad_intervencion === "Alta" ? "Revisar esta semana" : "Seguimiento"}
+                        </span>
+                      ) : (
+                        <span style={{ color: "#94a3b8", fontSize: "12px" }}>Ordinaria</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
@@ -108,50 +163,55 @@ export function DirectorGroupsTable({ grupos = [] }) {
     <div className="panel-card">
       <div className="panel-header">
         <div>
-          <h2>Comparativa entre grupos del centro y reparto de recursos (I.E. Valle Verde)</h2>
+          <h2>Consolidado por grados del centro educativo (Escala 0-20 y Reto 13)</h2>
           <p>
-            Relación entre las horas de formación práctica docente, la utilización de equipamiento del centro y la asistencia por grupo.
+            Muestra el promedio de notas, porcentaje de asistencia acumulada y alumnos con alerta de prioridad alta calculados en tiempo real.
           </p>
         </div>
-        <span className="badge-neutral">Vista SQL: vista_director (k &gt;= 26)</span>
+        <span className="badge-neutral">Vista SQL: vista_director</span>
       </div>
 
       <div className="table-wrapper">
-        <table className="clean-table">
-          <thead>
-            <tr>
-              <th>Grupo</th>
-              <th>Tutoría</th>
-              <th>Cohorte (k)</th>
-              <th>Asistencia</th>
-              <th>Formación Docente</th>
-              <th>Uso Recursos (vs 84% disp.)</th>
-              <th>Participación</th>
-              <th>Vínculo Familiar</th>
-            </tr>
-          </thead>
-          <tbody>
-            {grupos.map((g) => (
-              <tr key={g.grupo_id}>
-                <td>
-                  <strong>{g.nombre_grupo}</strong>
-                </td>
-                <td>{g.docente_tutor}</td>
-                <td>{g.num_estudiantes} est.</td>
-                <td>{g.asistencia_media_pct}%</td>
-                <td>
-                  <strong>{g.horas_formacion_docente} h</strong>
-                </td>
-                <td>
-                  <strong>{g.uso_recursos_aula_pct}%</strong> (Brecha:{" "}
-                  {Number(g.brecha_recursos_sin_usar_pct).toFixed(1)}%)
-                </td>
-                <td>{g.participacion_aula_pct}%</td>
-                <td>{g.vinculo_familiar_pct}%</td>
+        {grupos.length === 0 ? (
+          <div style={{ padding: "30px 20px", textAlign: "center", color: "#64748b" }}>
+            Base de datos conectada. Esperando carga de alumnos para calcular los consolidados por grado escolar.
+          </div>
+        ) : (
+          <table className="clean-table">
+            <thead>
+              <tr>
+                <th>Grado Escolar</th>
+                <th>Estudiantes</th>
+                <th>Asistencia Media</th>
+                <th>Promedio Notas (0-20)</th>
+                <th>Conectividad Hogar</th>
+                <th>Horas Estudio Semanal</th>
+                <th>Casos Prioridad Alta</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {grupos.map((g, idx) => (
+                <tr key={idx}>
+                  <td>
+                    <strong>{g.nombre_grupo}</strong>
+                  </td>
+                  <td>{g.num_estudiantes} est.</td>
+                  <td><strong>{g.asistencia_media_pct}%</strong></td>
+                  <td><strong>{g.participacion_aula_pct || g.promedio_notas || 0}</strong> / 20</td>
+                  <td>{g.uso_recursos_aula_pct || 0}% con internet</td>
+                  <td>{g.horas_formacion_docente || 0} h/sem</td>
+                  <td>
+                    {g.vinculo_familiar_pct > 0 ? (
+                      <span style={{ color: "#991b1b", fontWeight: 700 }}>{g.vinculo_familiar_pct} alertas</span>
+                    ) : (
+                      <span style={{ color: "#166534" }}>0 alertas</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
@@ -188,66 +248,25 @@ export function DelegadoTerritorialView({ escuelas = [], token }) {
       <div className="panel-card">
         <div className="panel-header">
           <div>
-            <h2>Mapa territorial de escuelas con brechas de conectividad/recursos y simulador de subvenciones</h2>
+            <h2>Simulador presupuestario territorial (Focalización rural y Programa Juntos)</h2>
             <p>
-              Representación espacial de los 12 centros cabecera de la red según zona (Rural, Periurbana, Urbana) y simulador de impacto presupuestario.
+              Calcula sobre los datos reales de la BD el impacto de destinar recursos a transporte rural, refuerzo escolar y recursos sin conexión.
             </p>
           </div>
-          <span className="badge-neutral">Vista SQL: vista_delegado (k &gt;= 98)</span>
+          <span className="badge-neutral">Vista SQL: vista_delegado</span>
         </div>
 
         <div className="chart-box">
-          <div className="legend-row">
-            <div className="legend-entry">
-              <span className="legend-swatch" style={{ background: "#b45309" }} />
-              <span>Escuela Rural (Prioridad transporte y servidor offline)</span>
-            </div>
-            <div className="legend-entry">
-              <span className="legend-swatch" style={{ background: "#2563eb" }} />
-              <span>Escuela Periurbana (Prioridad mentoría docente)</span>
-            </div>
-            <div className="legend-entry">
-              <span className="legend-swatch" style={{ background: "#0d9488" }} />
-              <span>Escuela Urbana (Nodo mentor de red)</span>
-            </div>
-          </div>
-
-          <svg
-            viewBox="0 0 760 185"
-            width="100%"
-            height="185"
-            style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px" }}
-          >
-            {escuelas.map((e, idx) => {
-              const x = 68 + (idx % 4) * 176 + (idx % 2) * 20;
-              const y = 44 + Math.floor(idx / 4) * 52;
-              const fill =
-                e.zona === "Rural" ? "#b45309" : e.zona === "Periurbana" ? "#2563eb" : "#0d9488";
-              return (
-                <g key={e.escuela_id}>
-                  <circle cx={x} cy={y} r="11" fill={fill} opacity="0.18" />
-                  <circle cx={x} cy={y} r="5.5" fill={fill} />
-                  <text x={x + 12} y={y - 2} fontSize="10.5" fontWeight="600" fill="#0f172a">
-                    {e.nombre_escuela}
-                  </text>
-                  <text x={x + 12} y={y + 11} fontSize="9.5" fill="#475569">
-                    {e.zona} · Conectividad {e.conectividad_pct}% · Uso rec. {e.tasa_uso_recursos_pct}%
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
-
           <div className="sim-grid">
             <div className="sim-control">
               <label htmlFor="sim-budget">
-                <strong>Presupuesto de subvención (EUR): {Number(budget).toLocaleString()}</strong>
+                <strong>Presupuesto disponible: {Number(budget).toLocaleString()} EUR</strong>
               </label>
               <input
                 id="sim-budget"
                 type="range"
-                min="60000"
-                max="240000"
+                min="50000"
+                max="250000"
                 step="10000"
                 value={budget}
                 onChange={(e) => setBudget(Number(e.target.value))}
@@ -256,13 +275,13 @@ export function DelegadoTerritorialView({ escuelas = [], token }) {
 
             <div className="sim-control">
               <label htmlFor="sim-becas">
-                <strong>% Becas Transporte y Comedor Rural: {becasPct}%</strong>
+                <strong>% Transporte rural y comedor: {becasPct}%</strong>
               </label>
               <input
                 id="sim-becas"
                 type="range"
                 min="10"
-                max="70"
+                max="80"
                 step="5"
                 value={becasPct}
                 onChange={(e) => setBecasPct(Number(e.target.value))}
@@ -271,9 +290,7 @@ export function DelegadoTerritorialView({ escuelas = [], token }) {
 
             <div className="sim-control">
               <label htmlFor="sim-formacion">
-                <strong>
-                  % Mentoría Docente ({formacionPct}%) y Offline ({offlinePct}%)
-                </strong>
+                <strong>% Refuerzo pedagógico: {formacionPct}% ({offlinePct}% offline)</strong>
               </label>
               <input
                 id="sim-formacion"
@@ -288,10 +305,8 @@ export function DelegadoTerritorialView({ escuelas = [], token }) {
           </div>
 
           <div className="sim-output">
-            <strong>Proyección del Simulador Territorial: </strong>
-            {simResult
-              ? simResult.lectura_humanizada
-              : "Calculando proyección territorial de impacto..."}
+            <strong>Proyección sobre datos reales: </strong>
+            {simResult ? simResult.lectura_humanizada : "Calculando..."}
           </div>
         </div>
       </div>
@@ -299,48 +314,55 @@ export function DelegadoTerritorialView({ escuelas = [], token }) {
       <div className="panel-card">
         <div className="panel-header">
           <div>
-            <h2>Matriz territorial de centros educativos (Conectividad, Formación Docente y Uso de Recursos)</h2>
+            <h2>Red de centros educativos en UGEL (Rural vs Urbano)</h2>
             <p>
-              Datos agregados con garantía de k-anonimato para orientar el reparto equitativo de recursos y acompañamiento.
+              Información territorial para asignación equitativa de recursos y seguimiento de brechas de acceso.
             </p>
           </div>
           <span className="badge-neutral">Vista SQL: vista_delegado</span>
         </div>
 
         <div className="table-wrapper">
-          <table className="clean-table">
-            <thead>
-              <tr>
-                <th>Centro Educativo</th>
-                <th>Zona</th>
-                <th>Conectividad</th>
-                <th>Disp. Equipos</th>
-                <th>Uso Efectivo (y Brecha)</th>
-                <th>Formación Docente</th>
-                <th>Asistencia</th>
-                <th>Aprendizaje</th>
-              </tr>
-            </thead>
-            <tbody>
-              {escuelas.map((e) => (
-                <tr key={e.escuela_id}>
-                  <td>
-                    <strong>{e.nombre_escuela}</strong>
-                  </td>
-                  <td>{e.zona}</td>
-                  <td>{e.conectividad_pct}%</td>
-                  <td>{e.dispositivos_disponibles_pct}%</td>
-                  <td>
-                    <strong>{e.tasa_uso_recursos_pct}%</strong> (Brecha:{" "}
-                    {Number(e.brecha_uso_equipamiento_pct).toFixed(1)}%)
-                  </td>
-                  <td>{e.horas_formacion_docente_media} h</td>
-                  <td>{e.asistencia_media_pct}%</td>
-                  <td>{e.aprendizaje_medio_pts} pts</td>
+          {escuelas.length === 0 ? (
+            <div style={{ padding: "30px 20px", textAlign: "center", color: "#64748b" }}>
+              Base de datos conectada. Esperando carga de datos territoriales de la UGEL.
+            </div>
+          ) : (
+            <table className="clean-table">
+              <thead>
+                <tr>
+                  <th>Centro Educativo</th>
+                  <th>Zona</th>
+                  <th>Conectividad Hogar</th>
+                  <th>Distancia Media</th>
+                  <th>Asistencia Media</th>
+                  <th>Promedio Notas (0-20)</th>
+                  <th>Alertas Prioritarias</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {escuelas.map((e, idx) => (
+                  <tr key={idx}>
+                    <td>
+                      <strong>{e.nombre_escuela}</strong>
+                    </td>
+                    <td>{e.zona}</td>
+                    <td>{e.conectividad_pct}%</td>
+                    <td>{e.brecha_uso_equipamiento_pct || 0} km</td>
+                    <td><strong>{e.asistencia_media_pct}%</strong></td>
+                    <td>{e.aprendizaje_medio_pts || 0} / 20</td>
+                    <td>
+                      {e.horas_formacion_docente_media > 0 ? (
+                        <span style={{ color: "#991b1b", fontWeight: 700 }}>{e.horas_formacion_docente_media}</span>
+                      ) : (
+                        "0"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </>

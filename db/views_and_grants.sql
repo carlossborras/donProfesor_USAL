@@ -1,146 +1,97 @@
 -- =============================================================================
--- DONPROFESOR (#Hack4Edu) · Vistas de Seguridad y Permisos SQL por Rol (Persona 3)
--- Garantiza privacidad de la información y k-anonimato desde el motor de BD.
--- Cada rol (docente, director, delegado) tiene su propia vista y usuario SQL
--- con GRANT SELECT exclusivo sobre su ámbito de actuación.
+-- DONPROFESOR (#Hack4Edu 2026, Reto 13) · Vistas SQL por Rol y Control de Ámbito
 -- =============================================================================
 
--- 1. VISTA DOCENTE:
--- Muestra el seguimiento contextual de su aula y los factores explicativos sin
--- exponer probabilidades numéricas de fracaso ni rankings competitivos.
+DROP VIEW IF EXISTS vista_docente;
+DROP VIEW IF EXISTS vista_director;
+DROP VIEW IF EXISTS vista_delegado;
+DROP VIEW IF EXISTS vista_avisos_predictivos;
+
+-- 1. VISTA DOCENTE: Datos de seguimiento del aula sin rankings ni estigmas
 CREATE VIEW vista_docente AS
 SELECT
-    a.codigo_seguimiento,
-    a.escuela_id,
-    e.nombre AS nombre_escuela,
-    a.grupo_id,
-    g.nombre_grupo,
-    g.grado,
-    g.materia_foco,
-    g.docente_tutor,
-    a.distancia_km,
-    a.tiene_beca,
-    a.apoyo_cosecha_familiar,
-    a.segundo_empleo_familiar,
-    a.acceso_internet_hogar,
-    a.faltas_dias_lluvia,
-    a.faltas_semanas_cosecha,
-    a.faltas_totales,
-    a.participacion_actividades_pct,
-    a.continuidad_entregas_pct,
-    a.nota_media,
-    a.tendencia_notas
-FROM alumno_contexto a
-JOIN grupo_aula g ON a.grupo_id = g.grupo_id
-JOIN escuela e ON a.escuela_id = e.escuela_id;
+    alumno_id,
+    escuela_id,
+    grado_secundaria,
+    sexo,
+    edad,
+    distancia_hogar_escuela_km,
+    tiempo_desplazamiento,
+    beneficiario_juntos,
+    horas_trabajo_semanal,
+    internet_hogar,
+    tiempo_estudio_semanal,
+    faltas_trimestre_1,
+    faltas_trimestre_2,
+    faltas_totales_calculadas,
+    asistencia_pct_calculada,
+    nota_trimestre_1_0_20,
+    nota_trimestre_2_0_20,
+    promedio_notas_calculado,
+    prediccion_nota_t3,
+    prediccion_faltas_t3,
+    prob_perdida_beca_pct,
+    prob_repeticion_pct,
+    prob_abandono_pct,
+    necesidad_intervencion,
+    indice_desanimo,
+    factor_principal_riesgo,
+    recomendacion_pedagogica
+FROM alumnos_hack4edu;
 
--- 2. VISTA DIRECTOR:
--- Agrega la información por grupo/aula dentro del centro educativo (k >= 18),
--- cruzando asistencia, aprendizaje, formación docente, utilización de recursos
--- y participación familiar sin identificar alumnos individuales.
+-- 2. VISTA DIRECTOR: Agregados por grado escolar y zona dentro del centro educativo
 CREATE VIEW vista_director AS
 SELECT
-    g.escuela_id,
-    e.nombre AS nombre_escuela,
-    e.zona,
-    e.conectividad_pct,
-    e.dispositivos_disponibles_pct,
-    g.grupo_id,
-    g.nombre_grupo,
-    g.grado,
-    g.materia_foco,
-    g.docente_tutor,
-    g.num_estudiantes,
-    g.asistencia_media_pct,
-    g.participacion_aula_pct,
-    g.uso_recursos_aula_pct,
-    (e.dispositivos_disponibles_pct - g.uso_recursos_aula_pct) AS brecha_recursos_sin_usar_pct,
-    g.horas_formacion_docente,
-    g.vinculo_familiar_pct,
-    g.nota_media_grupo
-FROM grupo_aula g
-JOIN escuela e ON g.escuela_id = e.escuela_id
-WHERE g.num_estudiantes >= 5;
+    escuela_id,
+    grado_secundaria,
+    COUNT(*) AS total_estudiantes,
+    ROUND(AVG(asistencia_pct_calculada), 2) AS asistencia_media_pct,
+    ROUND(AVG(promedio_notas_calculado), 2) AS promedio_notas,
+    ROUND(AVG(internet_hogar) * 100.0, 1) AS conectividad_hogar_pct,
+    ROUND(AVG(tiempo_estudio_semanal), 1) AS horas_estudio_media,
+    SUM(CASE WHEN beneficiario_juntos = 1 THEN 1 ELSE 0 END) AS total_beneficiarios_juntos,
+    SUM(CASE WHEN necesidad_intervencion = 'Alta' THEN 1 ELSE 0 END) AS casos_prioridad_alta,
+    SUM(CASE WHEN necesidad_intervencion = 'Media' THEN 1 ELSE 0 END) AS casos_prioridad_media,
+    SUM(CASE WHEN necesidad_intervencion = 'Baja' THEN 1 ELSE 0 END) AS casos_prioridad_baja,
+    ROUND(AVG(prob_abandono_pct), 2) AS prob_abandono_media_pct,
+    ROUND(AVG(indice_desanimo), 2) AS indice_desanimo_medio
+FROM alumnos_hack4edu
+GROUP BY escuela_id, grado_secundaria;
 
--- 3. VISTA DIRECTOR CLIMA Y COSECHA:
--- Serie temporal para la gráfica estrella de Dirección (asistencia vs lluvia y cosecha).
-CREATE VIEW vista_director_clima AS
-SELECT
-    c.escuela_id,
-    e.nombre AS nombre_escuela,
-    c.semana_num,
-    c.etiqueta_semana,
-    c.mm_lluvia,
-    c.es_semana_cosecha,
-    c.asistencia_semanal_pct,
-    c.uso_recursos_semanal_pct,
-    c.participacion_semanal_pct
-FROM calendario_entorno c
-JOIN escuela e ON c.escuela_id = e.escuela_id;
-
--- 4. VISTA DELEGADO TERRITORIAL:
--- Agrega a nivel de escuela para la red regional, garantizando k-anonimato
--- y permitiendo identificar brechas de conectividad, recursos y formación docente.
+-- 3. VISTA DELEGADO (UGEL / Territorial): Agregados por escuela, distrito y ámbito rural/urbano
 CREATE VIEW vista_delegado AS
 SELECT
-    e.escuela_id,
-    e.nombre AS nombre_escuela,
-    e.region,
-    e.zona,
-    e.conectividad_pct,
-    e.dispositivos_disponibles_pct,
-    e.tasa_uso_recursos_pct,
-    (e.dispositivos_disponibles_pct - e.tasa_uso_recursos_pct) AS brecha_uso_equipamiento_pct,
-    e.horas_formacion_docente_media,
-    e.participacion_familiar_media_pct,
-    e.asistencia_media_pct,
-    e.aprendizaje_medio_pts,
-    e.total_alumnos,
-    e.latitud,
-    e.longitud
-FROM escuela e
-WHERE e.total_alumnos >= 15;
+    ugel,
+    distrito,
+    escuela_id,
+    zona_escuela,
+    COUNT(*) AS total_estudiantes,
+    ROUND(AVG(asistencia_pct_calculada), 2) AS asistencia_media_pct,
+    ROUND(AVG(promedio_notas_calculado), 2) AS promedio_notas,
+    ROUND(AVG(internet_hogar) * 100.0, 1) AS conectividad_hogar_pct,
+    ROUND(AVG(distancia_hogar_escuela_km), 2) AS distancia_media_km,
+    SUM(CASE WHEN beneficiario_juntos = 1 THEN 1 ELSE 0 END) AS total_beneficiarios_juntos,
+    SUM(CASE WHEN necesidad_intervencion = 'Alta' THEN 1 ELSE 0 END) AS casos_prioridad_alta,
+    ROUND(AVG(prob_abandono_pct), 2) AS prob_abandono_media_pct,
+    ROUND(AVG(prob_repeticion_pct), 2) AS prob_repeticion_media_pct
+FROM alumnos_hack4edu
+GROUP BY ugel, distrito, escuela_id, zona_escuela;
 
--- 5. VISTA DE AVISOS EXPLICABLES POR ROL:
+-- 4. VISTA AVISOS PREDICTIVOS: Casos detectados para revisión y acompañamiento
 CREATE VIEW vista_avisos_predictivos AS
 SELECT
-    p.prediccion_id,
-    p.rol_destino,
-    p.escuela_id,
-    p.grupo_id,
-    p.codigo_seguimiento,
-    p.categoria_contexto,
-    p.titulo_humano,
-    p.descripcion_situacion,
-    p.factor_1_texto,
-    p.factor_1_peso,
-    p.factor_2_texto,
-    p.factor_2_peso,
-    p.factor_3_texto,
-    p.factor_3_peso,
-    p.recomendacion_pedagogica,
-    p.accion_sugerida_boton,
-    p.estado_revision
-FROM prediccion p;
-
--- =============================================================================
--- ROLES Y PERMISOS EN POSTGRESQL (Se ejecutan en el contenedor PostgreSQL)
--- Cada usuario SQL solo tiene GRANT SELECT sobre las vistas de su rol.
--- =============================================================================
--- DO $$
--- BEGIN
---   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'role_docente') THEN
---     CREATE ROLE role_docente LOGIN PASSWORD 'docente_pass';
---   END IF;
---   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'role_director') THEN
---     CREATE ROLE role_director LOGIN PASSWORD 'director_pass';
---   END IF;
---   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'role_delegado') THEN
---     CREATE ROLE role_delegado LOGIN PASSWORD 'delegado_pass';
---   END IF;
--- END
--- $$;
---
--- GRANT SELECT ON vista_docente, vista_avisos_predictivos TO role_docente;
--- GRANT SELECT ON vista_director, vista_director_clima, vista_avisos_predictivos TO role_director;
--- GRANT SELECT ON vista_delegado, vista_avisos_predictivos TO role_delegado;
+    alumno_id,
+    escuela_id,
+    grado_secundaria,
+    necesidad_intervencion,
+    prob_abandono_pct,
+    prediccion_nota_t3,
+    prediccion_faltas_t3,
+    prob_perdida_beca_pct,
+    prob_repeticion_pct,
+    indice_desanimo,
+    factor_principal_riesgo,
+    recomendacion_pedagogica,
+    fecha_prediccion
+FROM alumnos_hack4edu
+WHERE necesidad_intervencion IS NOT NULL;
