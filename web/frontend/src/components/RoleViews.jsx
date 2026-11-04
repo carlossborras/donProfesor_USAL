@@ -67,14 +67,14 @@ export function DocenteContextTable({ alumnos = [], onLoadSample }) {
         {alumnos.length === 0 ? (
           <div style={{ padding: "32px 20px", textAlign: "center", color: "#5e6c65" }}>
             <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "20px", color: "#1c2a24", marginBottom: "8px", fontWeight: 500 }}>
-              Base de datos conectada · 0 estudiantes registrados actualmente
+              Sin estudiantes registrados actualmente
             </h3>
             <p style={{ fontSize: "13.5px", maxWidth: "560px", margin: "0 auto 16px" }}>
-              La tabla <code>alumnos_hack4edu</code> está limpia. Puedes subir el archivo CSV del equipo o cargar ahora mismo 30 estudiantes de prueba para explorar las consultas SQL en vivo.
+              Actualmente no hay estudiantes en la lista. Puedes importar el archivo CSV con los datos de tu aula o cargar datos de prueba para explorar la plataforma.
             </p>
             {onLoadSample && (
               <button type="button" className="btn-forest" onClick={onLoadSample}>
-                Cargar 30 estudiantes de prueba en la Base de Datos
+                Cargar datos de demostración
               </button>
             )}
           </div>
@@ -189,21 +189,21 @@ export function DirectorGroupsTable({ grupos = [], onLoadSample }) {
             Consolidado por grados del centro educativo (Escala 0-20)
           </h2>
           <p className="calm-card-sub">
-            Promedio de notas, asistencia acumulada y prioridades de acompañamiento calculados mediante SQL en <code>vista_director</code>.
+            Promedio de notas, asistencia acumulada y prioridades de acompañamiento calculadas a partir de los datos de la escuela.
           </p>
         </div>
-        <span className="tag-context">Vista SQL: vista_director</span>
+        <span className="tag-context">Ámbito: Dirección de centro</span>
       </div>
 
       <div className="table-wrapper">
         {grupos.length === 0 ? (
           <div style={{ padding: "30px 20px", textAlign: "center", color: "#5e6c65" }}>
             <p style={{ marginBottom: "14px" }}>
-              Base de datos conectada (0 registros). Carga datos de prueba o sube el archivo CSV para ver las cohortes del centro.
+              Actualmente no hay estudiantes registrados. Carga datos de prueba o importa un archivo CSV para ver las cohortes del centro.
             </p>
             {onLoadSample && (
               <button type="button" className="btn-forest" onClick={onLoadSample}>
-                Cargar 30 estudiantes de prueba
+                Cargar datos de demostración
               </button>
             )}
           </div>
@@ -287,10 +287,10 @@ export function DelegadoTerritorialView({ escuelas = [], token, onLoadSample }) 
               Simulador presupuestario territorial (Transporte rural y Programa Juntos)
             </h2>
             <p className="calm-card-sub">
-              Estima sobre los registros de la BD el impacto de destinar recursos a transporte escolar, acompañamiento docente y servidores sin conexión.
+              Estima el impacto pedagógico de destinar recursos a transporte escolar, acompañamiento docente y equipamiento en las escuelas de la red.
             </p>
           </div>
-          <span className="tag-context">Vista SQL: vista_delegado</span>
+          <span className="tag-context">Ámbito: Red territorial UGEL</span>
         </div>
 
         <div>
@@ -358,18 +358,18 @@ export function DelegadoTerritorialView({ escuelas = [], token, onLoadSample }) 
               Comparativa territorial de asistencia, conectividad doméstica y distancia media de desplazamiento.
             </p>
           </div>
-          <span className="tag-context">Vista SQL: vista_delegado</span>
+          <span className="tag-context">Ámbito: Red territorial UGEL</span>
         </div>
 
         <div className="table-wrapper">
           {escuelas.length === 0 ? (
             <div style={{ padding: "30px 20px", textAlign: "center", color: "#5e6c65" }}>
               <p style={{ marginBottom: "14px" }}>
-                Base de datos conectada (0 registros). Carga los 30 estudiantes de prueba o sube un archivo CSV para ver las escuelas de la red.
+                Actualmente no hay estudiantes registrados. Carga datos de prueba o importa un archivo CSV para ver las escuelas de la red.
               </p>
               {onLoadSample && (
                 <button type="button" className="btn-forest" onClick={onLoadSample}>
-                  Cargar 30 estudiantes de prueba
+                  Cargar datos de demostración
                 </button>
               )}
             </div>

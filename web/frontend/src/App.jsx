@@ -8,185 +8,25 @@ import {
   clearDatasetApi,
   uploadCsvDatasetApi,
   fetchLlmStatusApi,
-  updateLlmConfigApi,
 } from "./services/api.js";
 import { DelegadoTerritorialView } from "./components/RoleViews.jsx";
 import { RoleDashboard } from "./components/RoleDashboard.jsx";
 
-/* ==========================================================================
-   PISTAS INTERACTIVAS DE REFERENCIA (FIGMA) POR ROL
-   Permiten usar y probar el flujo completo incluso con la BD en 0 registros,
-   y se combinan con las alertas reales cuando se importan datos en la BD.
-   ========================================================================== */
-
-const FIGMA_PISTAS_BY_ROLE = {
-  docente: [
-    {
-      id: "A-204",
-      alumno_id: "A-204",
-      kickerCard: "Estudiante A-204",
-      kickerDetail: "ESTUDIANTE A-204",
-      title: "Las notas han bajado 1,4 puntos",
-      lead: "Las ausencias durante la cosecha y el camino hasta la escuela pueden estar influyendo.",
-      factors: [
-        { label: "Faltas en semanas de cosecha", pct: 42 },
-        { label: "Más de 4,2 km en días de lluvia", pct: 35 },
-        { label: "Sin dispositivo ni internet en casa", pct: 23 },
-      ],
-      defaultDecision: "Adaptación temporal de entregas durante semanas de cosecha y lluvia",
-      helperPrompt:
-        "Estoy revisando el caso del Estudiante A-204: sus notas han bajado 1,4 puntos y acumula faltas en semanas de cosecha viviendo a más de 4,2 km. ¿Qué medidas de acompañamiento me sugieres?",
-    },
-    {
-      id: "A-219",
-      alumno_id: "A-219",
-      kickerCard: "Estudiante A-219",
-      kickerDetail: "ESTUDIANTE A-219",
-      title: "Su progreso se mantiene estable gracias a la beca",
-      lead: "El apoyo del programa Juntos y el seguimiento familiar están sosteniendo su asistencia por encima del 88%.",
-      factors: [
-        { label: "Asistencia continuada con beca Juntos", pct: 55 },
-        { label: "Apoyo familiar en estudio semanal", pct: 28 },
-        { label: "Distancia moderada al centro (2,1 km)", pct: 17 },
-      ],
-      defaultDecision: "Refuerzo positivo en tutoría familiar y seguimiento de beca Juntos",
-      helperPrompt:
-        "El Estudiante A-219 mantiene su progreso estable gracias a la beca Juntos. ¿Cómo podemos consolidar este efecto protector en la tutoría?",
-    },
-    {
-      id: "AULA-2B-TABLETS",
-      alumno_id: "AULA-2B",
-      kickerCard: "Oportunidad para tu aula",
-      kickerDetail: "OPORTUNIDAD PARA TU AULA",
-      title: "Tablets sin conexión libres el jueves a tercera hora",
-      lead: "El lote de tablets con material precargado está disponible para reforzar con quienes no tienen internet en casa.",
-      factors: [
-        { label: "Alumnado del grupo sin internet en el hogar", pct: 48 },
-        { label: "Contenidos offline sincronizados para 2°B", pct: 32 },
-        { label: "Disponibilidad de aula móvil este jueves", pct: 20 },
-      ],
-      defaultDecision: "Reserva de tablets sin conexión el jueves a 3ª hora para refuerzo",
-      helperPrompt:
-        "Tenemos tablets sin conexión libres el jueves a tercera hora para 2°B. ¿Cómo organizo la sesión para apoyar al alumnado sin internet en casa?",
-    },
-  ],
-  director: [
-    {
-      id: "COHORTE-3SEC",
-      alumno_id: "GRADO-3SEC",
-      kickerCard: "Cohorte 3° Secundaria",
-      kickerDetail: "COHORTE 3° SECUNDARIA",
-      title: "La asistencia baja un 11% en semanas de lluvia intensa",
-      lead: "El alumnado que se desplaza desde veredas rurales a más de 3 km concentra la mayor parte de ausencias.",
-      factors: [
-        { label: "Trayectos rurales superiores a 3,5 km", pct: 46 },
-        { label: "Coincidencia con calendario agrícola local", pct: 34 },
-        { label: "Hogar sin conectividad para aviso previo", pct: 20 },
-      ],
-      defaultDecision: "Activación de calendario flexible y guías impresas en semanas de lluvia",
-      helperPrompt:
-        "En dirección vemos que 3° de Secundaria baja su asistencia en semanas de lluvia y cosecha. ¿Qué medidas organizativas podemos coordinar en el centro?",
-    },
-    {
-      id: "RECURSOS-OFFLINE",
-      alumno_id: "CENTRO-VALLE-VERDE",
-      kickerCard: "Equipamiento del centro",
-      kickerDetail: "EQUIPAMIENTO DEL CENTRO",
-      title: "Margen para ampliar el préstamo de material offline",
-      lead: "El 38% de las tablets con recursos locales tiene horas libres los martes y jueves por la mañana.",
-      factors: [
-        { label: "Estudiantes sin conectividad doméstica", pct: 50 },
-        { label: "Horas disponibles de carrito de tablets", pct: 30 },
-        { label: "Docentes con taller de uso pedagógico", pct: 20 },
-      ],
-      defaultDecision: "Redistribución horaria de tablets sin conexión para 2° y 3° de Secundaria",
-      helperPrompt:
-        "¿Qué brecha hay entre dispositivos disponibles y uso real por grupo en nuestro centro educativo?",
-    },
-    {
-      id: "PROTECCION-JUNTOS",
-      alumno_id: "BECAS-CENTRO",
-      kickerCard: "Continuidad educativa",
-      kickerDetail: "CONTINUIDAD EDUCATIVA",
-      title: "Seguimiento preventivo de requisitos de beca Juntos",
-      lead: "Revisar a tiempo las ausencias justificadas evita que 6 familias pierdan el subsidio escolar este trimestre.",
-      factors: [
-        { label: "Faltas pendientes de justificación médica o climática", pct: 45 },
-        { label: "Riesgo estadístico de pérdida de subsidio", pct: 35 },
-        { label: "Necesidad de contacto con tutoría familiar", pct: 20 },
-      ],
-      defaultDecision: "Coordinación con tutores para actualizar justificaciones de asistencia",
-      helperPrompt:
-        "¿Qué grupos del centro concentran mayor riesgo de pérdida de beca Juntos y cómo podemos prevenirlo?",
-    },
-  ],
-  delegado: [
-    {
-      id: "UGEL-RURAL-SUR",
-      alumno_id: "RED-RURAL-SUR",
-      kickerCard: "Red Rural Andina Sur",
-      kickerDetail: "RED RURAL ANDINA SUR",
-      title: "Prioridad de transporte escolar en 4 centros rurales",
-      lead: "Las escuelas con distancia media superior a 4 km muestran la mayor sensibilidad climática en asistencia.",
-      factors: [
-        { label: "Distancia hogar-escuela superior a 4 km", pct: 49 },
-        { label: "Impacto de lluvias en caminos vecinales", pct: 31 },
-        { label: "Población beneficiaria del programa Juntos", pct: 20 },
-      ],
-      defaultDecision: "Focalización de partida de transporte y comedor rural en 4 centros",
-      helperPrompt:
-        "¿Qué escuelas rurales de la UGEL tienen menor conectividad y mayor distancia media de desplazamiento?",
-    },
-    {
-      id: "SERVIDORES-OFFLINE-UGEL",
-      alumno_id: "RED-CONECTIVIDAD",
-      kickerCard: "Infraestructura pedagógica",
-      kickerDetail: "INFRAESTRUCTURA PEDAGÓGICA",
-      title: "Servidores locales sin internet para zonas sin cobertura",
-      lead: "Instalar repositorios offline en centros rurales compensa la falta de internet doméstico en el 72% del alumnado.",
-      factors: [
-        { label: "Hogares rurales sin acceso a internet", pct: 54 },
-        { label: "Aprovechamiento de equipamiento ya entregado", pct: 28 },
-        { label: "Acompañamiento técnico a docentes", pct: 18 },
-      ],
-      defaultDecision: "Dotación de servidores de contenido offline y talleres docentes",
-      helperPrompt:
-        "¿Dónde hay mayor brecha entre equipamiento disponible y conectividad en las escuelas de la red?",
-    },
-    {
-      id: "FORMACION-DOCENTE-RED",
-      alumno_id: "RED-FORMACION",
-      kickerCard: "Acompañamiento docente",
-      kickerDetail: "ACOMPAÑAMIENTO DOCENTE",
-      title: "Comunidades de práctica entre escuelas cercanas",
-      lead: "Los centros que comparten materiales adaptados al calendario agrícola mejoran un 9% la retención en T3.",
-      factors: [
-        { label: "Adaptación curricular en época de cosecha", pct: 44 },
-        { label: "Horas de co-docencia entre centros", pct: 33 },
-        { label: "Estabilidad de calificaciones en T2 y T3", pct: 23 },
-      ],
-      defaultDecision: "Impulso de red de intercambio pedagógico entre escuelas de la UGEL",
-      helperPrompt:
-        "¿Cómo se distribuye la asistencia y el rendimiento entre centros urbanos y rurales de la UGEL?",
-    },
-  ],
-};
-
 const ROLE_META = {
   docente: {
     label: "Docente",
-    scopeTitle: "Aula 2°B · I.E. Valle Verde",
-    heroSubtitle: "Tres pistas para acompañar a tu grupo esta semana. Tú eliges por dónde empezar.",
+    scopeTitle: "Tutoría de aula",
+    heroSubtitle: "Pistas y situaciones prioritarias para acompañar a tu grupo esta semana.",
   },
   director: {
     label: "Director",
-    scopeTitle: "Dirección · I.E. Valle Verde",
-    heroSubtitle: "Tres prioridades del centro educativo para coordinar con tu equipo docente esta semana.",
+    scopeTitle: "Dirección de centro",
+    heroSubtitle: "Prioridades del centro educativo para coordinar con tu equipo docente.",
   },
   delegado: {
     label: "Delegado",
-    scopeTitle: "UGEL Sur · Red de 12 Escuelas",
-    heroSubtitle: "Tres focos territoriales para orientar recursos de transporte, becas y conectividad rural.",
+    scopeTitle: "Red territorial UGEL",
+    heroSubtitle: "Focos territoriales para orientar recursos de transporte, becas y conectividad.",
   },
 };
 
@@ -195,24 +35,50 @@ const CHAT_PRESETS = {
     "¿Qué alumnos faltan cuando llueve y viven a más de 3 km?",
     "¿Cómo influye la cosecha y el apoyo laboral en las entregas?",
     "¿Cuál es el efecto protector de la beca en mi tutoría?",
-    "¿Qué situaciones prioritarias sugiere revisar el modelo?",
+    "¿Qué estudiantes sugiere acompañar con mayor prioridad?",
   ],
   director: [
     "¿Cómo se superponen asistencia, lluvia y semanas de cosecha?",
-    "¿Qué brecha hay entre dispositivos disponibles y uso real por grupo?",
-    "¿Qué grados tienen más casos de prioridad alta en el centro?",
+    "¿Qué grados tienen mayor necesidad de acompañamiento?",
     "¿Qué grupos tienen menor asistencia en el segundo trimestre?",
+    "¿Qué brecha de conectividad existe entre los grupos?",
   ],
   delegado: [
-    "¿Qué escuelas rurales tienen menor conectividad y uso de recursos?",
+    "¿Qué escuelas rurales tienen menor conectividad?",
     "¿Cómo se distribuye la asistencia entre centros urbanos y rurales?",
-    "¿Dónde priorizar becas de transporte escolar según la distancia?",
-    "¿Qué escuelas concentran más casos de prioridad de acompañamiento?",
+    "¿Dónde priorizar apoyos de transporte escolar según la distancia?",
+    "¿Qué escuelas concentran mayor prioridad de acompañamiento?",
   ],
 };
 
 function mapDbAlertToPista(item, index) {
   const code = item.codigo_seguimiento || item.alumno_id || item.prediccion_id || `ALU-${index + 1}`;
+  const factors = [];
+  if (item.factor_principal_riesgo || item.factor_1_texto) {
+    factors.push({
+      label: item.factor_principal_riesgo || item.factor_1_texto,
+      pct: Number(item.factor_1_peso) || 45,
+    });
+  }
+  if (item.factor_2_texto) {
+    factors.push({
+      label: item.factor_2_texto,
+      pct: Number(item.factor_2_peso) || 35,
+    });
+  }
+  if (item.factor_3_texto) {
+    factors.push({
+      label: item.factor_3_texto,
+      pct: Number(item.factor_3_peso) || 20,
+    });
+  }
+  if (factors.length === 0) {
+    factors.push({
+      label: "Asistencia o rendimiento que requiere atención pedagógica",
+      pct: 100,
+    });
+  }
+
   return {
     id: item.prediccion_id || code,
     alumno_id: code,
@@ -222,25 +88,12 @@ function mapDbAlertToPista(item, index) {
     lead:
       item.descripcion_situacion ||
       item.recomendacion_pedagogica ||
-      "Observación generada a partir de las variables de asistencia, desplazamiento y rendimiento.",
-    factors: [
-      {
-        label: item.factor_1_texto || "Ausentismo acumulado en trimestres previos",
-        pct: Number(item.factor_1_peso) || 45,
-      },
-      {
-        label: item.factor_2_texto || "Distancia hogar-escuela y tiempo de traslado",
-        pct: 35,
-      },
-      {
-        label: item.factor_3_texto || "Contexto socioeconómico y conectividad en hogar",
-        pct: 20,
-      },
-    ],
+      "Situación identificada a partir de los registros escolares de asistencia y calificaciones.",
+    factors,
     defaultDecision:
       item.recomendacion_pedagogica ||
       "Adaptación temporal de entregas y tutoría con la familia",
-    helperPrompt: `Analiza la situación del estudiante ${code} en la base de datos (${item.titulo_humano || "riesgo detectado"}) y dime qué factores influyen y cómo acompañarle.`,
+    helperPrompt: `Analiza la situación del estudiante ${code} en los registros de aula y sugiéreme recomendaciones de acompañamiento pedagógico.`,
     fromDatabase: true,
     estado_revision: item.estado_revision,
   };
@@ -268,12 +121,8 @@ export function App({ session, onLogout }) {
   const [savingAction, setSavingAction] = useState(false);
   const [completedIds, setCompletedIds] = useState({});
 
-  // Modal "Sobre esta ayuda" / Configuración LLM & Datos
+  // Modal "Sobre esta ayuda" y gestión de datos
   const [aboutModalOpen, setAboutModalOpen] = useState(false);
-  const [llmUrlInput, setLlmUrlInput] = useState("http://172.25.144.238:8001/v1");
-  const [llmModelInput, setLlmModelInput] = useState("donprofesor-llm");
-  const [llmKeyInput, setLlmKeyInput] = useState("");
-  const [savingLlm, setSavingLlm] = useState(false);
   const [dataBusy, setDataBusy] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -283,7 +132,7 @@ export function App({ session, onLogout }) {
   const [chatHistory, setChatHistory] = useState([
     {
       sender: "assistant",
-      text: "Hola. Estoy conectado al servidor MCP de base de datos y al agente ReAct (LangGraph). Puedes consultarme sobre cualquier estudiante, tendencia de asistencia, impacto de lluvia y cosecha o becas Juntos.",
+      text: "Hola. Soy tu asistente de aula. Puedes preguntarme cualquier duda sobre la asistencia de tus estudiantes, el impacto de las lluvias o cosechas, o recomendaciones de acompañamiento.",
       sql: null,
       rowsCount: 0,
       mcpTrace: null,
@@ -317,8 +166,6 @@ export function App({ session, onLogout }) {
       setMcpMeta(mcpRes);
       if (llmRes) {
         setLlmStatus(llmRes);
-        if (llmRes.base_url) setLlmUrlInput(llmRes.base_url);
-        if (llmRes.model_name) setLlmModelInput(llmRes.model_name);
       }
     } catch (err) {
       if (err.status === 401) {
@@ -335,14 +182,11 @@ export function App({ session, onLogout }) {
     loadRoleData();
   }, [loadRoleData]);
 
-  // Construir lista de pistas (de la BD real si hay filas, o las 3 pistas interactivas de Figma si la BD tiene 0 filas)
+  // Construir lista de alertas exclusivamente de la base de datos real
   const dbAlerts = panelData?.avisos_predictivos || [];
-  const activePistas =
-    dbAlerts.length > 0
-      ? dbAlerts.slice(0, 6).map(mapDbAlertToPista)
-      : FIGMA_PISTAS_BY_ROLE[activeRole] || FIGMA_PISTAS_BY_ROLE.docente;
+  const activePistas = dbAlerts.slice(0, 8).map(mapDbAlertToPista);
 
-  const currentPista = activePistas[selectedPistaIdx] || activePistas[0];
+  const currentPista = activePistas[selectedPistaIdx] || activePistas[0] || null;
 
   useEffect(() => {
     if (currentPista) {
@@ -403,7 +247,7 @@ export function App({ session, onLogout }) {
         ...prev,
         {
           sender: "assistant",
-          text: "No se pudo completar la consulta en el servidor MCP en este momento.",
+          text: "No se pudo obtener respuesta del asistente en este momento. Por favor, intenta de nuevo en unos instantes.",
           sql: null,
         },
       ]);
@@ -470,25 +314,6 @@ export function App({ session, onLogout }) {
     } finally {
       setDataBusy(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
-
-  const handleSaveLlmConfig = async (e) => {
-    e.preventDefault();
-    if (!token) return;
-    setSavingLlm(true);
-    try {
-      const updated = await updateLlmConfigApi(token, {
-        base_url: llmUrlInput,
-        model_name: llmModelInput,
-        api_key: llmKeyInput,
-      });
-      setLlmStatus(updated);
-      showToast("Configuración de Qwen / vLLM actualizada.");
-    } catch (err) {
-      showToast(err.message || "No se pudo actualizar la configuración del LLM.");
-    } finally {
-      setSavingLlm(false);
     }
   };
 
@@ -622,8 +447,8 @@ export function App({ session, onLogout }) {
             <span className="status-dot" />
             <span className="scope-title">{roleInfo.scopeTitle}</span>
 
-            <span className="db-pill" title="Estado en tiempo real de la tabla alumnos_hack4edu">
-              BD Real: <strong>{totalAlumnos} estudiantes</strong>
+            <span className="db-pill" title="Estudiantes registrados en la plataforma">
+              Estudiantes registrados: <strong>{totalAlumnos}</strong>
             </span>
 
             {totalAlumnos === 0 ? (
@@ -633,7 +458,7 @@ export function App({ session, onLogout }) {
                 onClick={handleLoadSampleData}
                 disabled={dataBusy}
               >
-                {dataBusy ? "Cargando..." : "Cargar 30 alumnos de prueba"}
+                {dataBusy ? "Cargando..." : "Cargar datos de demostración"}
               </button>
             ) : (
               <button
@@ -642,7 +467,7 @@ export function App({ session, onLogout }) {
                 onClick={handleClearDatabase}
                 disabled={dataBusy}
               >
-                {dataBusy ? "Vaciando..." : "Vaciar BD (0 alumnos)"}
+                {dataBusy ? "Limpiando..." : "Limpiar datos"}
               </button>
             )}
 
@@ -652,7 +477,7 @@ export function App({ session, onLogout }) {
               onClick={() => fileInputRef.current?.click()}
               disabled={dataBusy}
             >
-              Subir CSV
+              Importar CSV
             </button>
             <input
               ref={fileInputRef}
@@ -728,33 +553,94 @@ export function App({ session, onLogout }) {
             <h1 className="hero-serif-title">Un poco de atención hace mucho.</h1>
             <p className="hero-subtitle">{roleInfo.heroSubtitle}</p>
 
-            <div className="master-detail-header">
-              <span className="master-detail-header-left">
-                {activePistas.length === 3
-                  ? "Tres cosas que conviene mirar"
-                  : `${activePistas.length} situaciones que conviene mirar`}
-                {totalAlumnos === 0 && (
-                  <span
-                    style={{
-                      marginLeft: "10px",
-                      fontSize: "11.5px",
-                      fontWeight: 500,
-                      color: "#5a7066",
-                      background: "#e4eee9",
-                      padding: "2px 8px",
-                      borderRadius: "4px",
-                    }}
+            {activePistas.length === 0 ? (
+              <div
+                className="calm-card"
+                style={{
+                  padding: "48px 32px",
+                  textAlign: "center",
+                  maxWidth: "640px",
+                  margin: "40px auto",
+                  background: "#ffffff",
+                  borderRadius: "12px",
+                  border: "1px solid #e2ded4",
+                  boxShadow: "0 2px 12px rgba(0,0,0,0.03)",
+                }}
+              >
+                <div
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "50%",
+                    background: "#eef5f2",
+                    color: "#1f6351",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    margin: "0 auto 20px",
+                  }}
+                >
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                </div>
+                <h3
+                  style={{
+                    fontFamily: "Newsreader, serif",
+                    fontSize: "24px",
+                    color: "#192823",
+                    marginBottom: "10px",
+                    fontWeight: 500,
+                  }}
+                >
+                  Sin alertas prioritarias pendientes
+                </h3>
+                <p
+                  style={{
+                    color: "#5a7066",
+                    fontSize: "14px",
+                    lineHeight: "1.6",
+                    marginBottom: "28px",
+                    maxWidth: "520px",
+                    marginLeft: "auto",
+                    marginRight: "auto",
+                  }}
+                >
+                  Actualmente no hay estudiantes con avisos de acompañamiento prioritario registrados. En cuanto importes el archivo con las calificaciones y asistencia de tu grupo, el sistema identificará qué alumnos pueden necesitar apoyo personalizado.
+                </p>
+                <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="btn-forest"
+                    style={{ padding: "10px 20px", fontSize: "14px", cursor: "pointer" }}
+                    onClick={() => fileInputRef.current?.click()}
                   >
-                    Casos interactivos de referencia (BD en 0 filas)
+                    Importar archivo CSV
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-outline-calm"
+                    style={{ padding: "10px 20px", fontSize: "14px", cursor: "pointer" }}
+                    onClick={handleLoadSampleData}
+                    disabled={dataBusy}
+                  >
+                    {dataBusy ? "Cargando..." : "Cargar datos de demostración"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="master-detail-header">
+                  <span className="master-detail-header-left">
+                    {activePistas.length} situaciones que conviene revisar
                   </span>
-                )}
-              </span>
-              <span className="master-detail-header-right">Elige una para verla con calma</span>
-            </div>
+                  <span className="master-detail-header-right">Elige una para verla con calma</span>
+                </div>
 
-            <div className="master-detail-grid">
-              {/* LISTA IZQUIERDA (01, 02, 03) */}
-              <div className="master-list">
+                <div className="master-detail-grid">
+                  {/* LISTA IZQUIERDA */}
+                  <div className="master-list">
                 {activePistas.map((pista, idx) => {
                   const isSelected = idx === selectedPistaIdx;
                   const numStr = String(idx + 1).padStart(2, "0");
@@ -930,6 +816,8 @@ export function App({ session, onLogout }) {
                 </div>
               )}
             </div>
+            </>
+            )}
           </main>
         )}
 
@@ -961,10 +849,10 @@ export function App({ session, onLogout }) {
            ================================================================== */}
         {activeNav === "lohablamos" && (
           <main className="edusight-content">
-            <div className="section-kicker">ACOMPAÑAMIENTO CONVERSACIONAL · MCP + LANGGRAPH</div>
+            <div className="section-kicker">ORIENTACIÓN Y CONSULTA PEDAGÓGICA</div>
             <h1 className="hero-serif-title">Lo hablamos con calma.</h1>
             <p className="hero-subtitle">
-              Consulta en lenguaje natural sobre tu aula, centro o territorio. El agente ReAct utiliza el servidor MCP sobre las vistas SQL autorizadas ({grantedViewsText}).
+              Conversa con el asistente para comprender mejor la situación de tu grupo o centro. Las respuestas se basan exclusivamente en los datos de tu ámbito escolar.
             </p>
 
             <div className="chat-workspace-grid">
@@ -1015,24 +903,11 @@ export function App({ session, onLogout }) {
                       {msg.sql && (
                         <details className="mcp-trace-box">
                           <summary>
-                            Ver traza MCP y Agente ReAct ({msg.rowsCount ?? 0} filas devueltas por SQL)
+                            Ver datos consultados en el registro escolar
                           </summary>
                           <div className="mcp-trace-code">
-                            <div>
-                              <strong>Framework:</strong>{" "}
-                              {msg.mcpTrace?.framework || "LangGraph ReAct"}
-                            </div>
-                            {msg.mcpTrace?.qwen_status && (
-                              <div>
-                                <strong>Estado LLM:</strong> {msg.mcpTrace.qwen_status}
-                              </div>
-                            )}
-                            <div>
-                              <strong>Tools ejecutadas:</strong>{" "}
-                              {(msg.mcpTrace?.tools_called || []).join(" -> ")}
-                            </div>
-                            <div style={{ marginTop: "4px" }}>
-                              <strong>SQL ejecutado en vista ({grantedViewsText}):</strong>
+                            <div style={{ marginBottom: "4px" }}>
+                              <strong>Consulta sobre el registro escolar:</strong>
                             </div>
                             <div>{msg.sql}</div>
                           </div>
@@ -1043,8 +918,8 @@ export function App({ session, onLogout }) {
 
                   {chatLoading && (
                     <div className="msg-bubble msg-assistant">
-                      <span className="msg-sender">Agente ReAct · LangGraph + MCP</span>
-                      <div>Consultando herramientas MCP sobre {grantedViewsText}...</div>
+                      <span className="msg-sender">Asistente EduSight</span>
+                      <div>Consultando los registros del aula...</div>
                     </div>
                   )}
                 </div>
@@ -1064,7 +939,7 @@ export function App({ session, onLogout }) {
                 </form>
               </div>
 
-              {/* COLUMNA DERECHA: CONEXIÓN QWEN/VLLM Y REGISTRO DE DECISIONES */}
+              {/* COLUMNA DERECHA: ASISTENTE EDUCATIVO Y REGISTRO DE DECISIONES */}
               <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
                 <div className="calm-card" style={{ marginBottom: 0, padding: "20px" }}>
                   <div
@@ -1074,57 +949,43 @@ export function App({ session, onLogout }) {
                       textTransform: "uppercase",
                       letterSpacing: "0.1em",
                       color: "#1f6351",
-                      marginBottom: "6px",
+                      marginBottom: "8px",
                     }}
                   >
-                    CONEXIÓN LANGGRAPH · QWEN (VLLM)
+                    ASISTENTE PEDAGÓGICO DE AULA
                   </div>
-                  <div style={{ fontSize: "12.5px", color: "#4e5d55", marginBottom: "12px" }}>
-                    {llmStatus?.detail ||
-                      "Conectado a 172.25.144.238:8001 (modelo donprofesor-llm)."}
+                  <p style={{ fontSize: "13px", color: "#4e5d55", lineHeight: "1.5", margin: 0 }}>
+                    Este espacio te orienta sobre la asistencia y rendimiento de tu grupo, ayudándote a contextualizar situaciones de vulnerabilidad o necesidades de acompañamiento.
+                  </p>
+                  <div
+                    style={{
+                      marginTop: "14px",
+                      padding: "10px 12px",
+                      background: llmStatus?.status === "ok" ? "#eef7f3" : "#fbf9f4",
+                      borderRadius: "6px",
+                      border: `1px solid ${llmStatus?.status === "ok" ? "#c8e6d9" : "#e8e3d6"}`,
+                      fontSize: "12px",
+                      color: llmStatus?.status === "ok" ? "#1b5e20" : "#6c5835",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: "8px",
+                        height: "8px",
+                        borderRadius: "50%",
+                        background: llmStatus?.status === "ok" ? "#2e7d32" : "#9e9e9e",
+                        display: "inline-block",
+                      }}
+                    />
+                    <span>
+                      {llmStatus?.status === "ok"
+                        ? "Asistente inteligente disponible"
+                        : "Asistente en modo consulta escolar"}
+                    </span>
                   </div>
-
-                  <form onSubmit={handleSaveLlmConfig}>
-                    <div className="form-group" style={{ marginTop: "8px" }}>
-                      <label htmlFor="llm-url">Endpoint OpenAI / vLLM</label>
-                      <input
-                        id="llm-url"
-                        type="text"
-                        className="form-input"
-                        value={llmUrlInput}
-                        onChange={(e) => setLlmUrlInput(e.target.value)}
-                      />
-                    </div>
-                    <div className="form-group" style={{ marginTop: "10px" }}>
-                      <label htmlFor="llm-model">Nombre del modelo en vLLM</label>
-                      <input
-                        id="llm-model"
-                        type="text"
-                        className="form-input"
-                        value={llmModelInput}
-                        onChange={(e) => setLlmModelInput(e.target.value)}
-                      />
-                    </div>
-                    <div className="form-group" style={{ marginTop: "10px" }}>
-                      <label htmlFor="llm-key">API Key (si vLLM tiene --api-key activo)</label>
-                      <input
-                        id="llm-key"
-                        type="password"
-                        className="form-input"
-                        placeholder="Pega aquí la API key de tu compañero..."
-                        value={llmKeyInput}
-                        onChange={(e) => setLlmKeyInput(e.target.value)}
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      className="btn-outline-calm"
-                      style={{ width: "100%", marginTop: "12px" }}
-                      disabled={savingLlm}
-                    >
-                      {savingLlm ? "Verificando..." : "Actualizar y verificar conexión Qwen"}
-                    </button>
-                  </form>
                 </div>
 
                 <div className="calm-card" style={{ marginBottom: 0, padding: "20px" }}>
@@ -1212,18 +1073,16 @@ export function App({ session, onLogout }) {
               }}
             >
               <div>
-                <strong>Rol SQL activo:</strong> <code>role_{activeRole}</code> ({grantedViewsText})
+                <strong>Perfil de acceso:</strong> {ROLE_META[activeRole]?.label || activeRole} ({roleInfo.scopeTitle})
               </div>
               <div>
-                <strong>Registros en alumnos_hack4edu:</strong> {totalAlumnos} estudiantes (30 variables de contexto + 7 variables objetivo)
+                <strong>Estudiantes en seguimiento:</strong> {totalAlumnos} alumnos registrados
               </div>
               <div>
-                <strong>Servidor MCP:</strong> <code>{mcpMeta?.mcp_server_name || "donprofesor-db-mcp"}</code> (list_tables, describe_table, read_query)
+                <strong>Privacidad de aula:</strong> Consultas limitadas a tu ámbito de responsabilidad educativa.
               </div>
               <div>
-                <strong>Agente ReAct (LangGraph):</strong>{" "}
-                <code>{llmStatus?.base_url || "http://172.25.144.238:8001/v1"}</code> (modelo{" "}
-                <code>{llmStatus?.model_name || "donprofesor-llm"}</code>)
+                <strong>Acompañamiento humano:</strong> Las sugerencias son orientativas; la decisión final siempre es del docente.
               </div>
             </div>
 
