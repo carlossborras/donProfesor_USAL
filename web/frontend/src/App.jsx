@@ -11,6 +11,7 @@ import {
 } from "./services/api.js";
 import { DelegadoTerritorialView } from "./components/RoleViews.jsx";
 import { RoleDashboard } from "./components/RoleDashboard.jsx";
+import { StudentEntryModal } from "./components/StudentEntryModal.jsx";
 
 const ROLE_META = {
   docente: {
@@ -123,6 +124,7 @@ export function App({ session, onLogout }) {
 
   // Modal "Sobre esta ayuda" y gestión de datos
   const [aboutModalOpen, setAboutModalOpen] = useState(false);
+  const [studentModalOpen, setStudentModalOpen] = useState(false);
   const [dataBusy, setDataBusy] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -479,6 +481,14 @@ export function App({ session, onLogout }) {
             >
               Importar CSV
             </button>
+            <button
+              type="button"
+              className="btn-tiny-action"
+              onClick={() => setStudentModalOpen(true)}
+              disabled={dataBusy}
+            >
+              + Añadir estudiante
+            </button>
             <input
               ref={fileInputRef}
               type="file"
@@ -613,6 +623,14 @@ export function App({ session, onLogout }) {
                   <button
                     type="button"
                     className="btn-forest"
+                    style={{ padding: "10px 20px", fontSize: "14px", cursor: "pointer" }}
+                    onClick={() => setStudentModalOpen(true)}
+                  >
+                    + Registrar estudiante
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-outline-calm"
                     style={{ padding: "10px 20px", fontSize: "14px", cursor: "pointer" }}
                     onClick={() => fileInputRef.current?.click()}
                   >
@@ -1050,6 +1068,21 @@ export function App({ session, onLogout }) {
           </button>
         </footer>
       </div>
+
+      {/* MODAL REGISTRO DE ESTUDIANTE (MANUAL O PEGAR EXCEL) */}
+      {studentModalOpen && (
+        <StudentEntryModal
+          token={token}
+          currentSchoolId={user?.escuela_id}
+          currentGrade={user?.grado_secundaria}
+          onClose={() => setStudentModalOpen(false)}
+          onSuccess={(msg) => {
+            showToast(msg);
+            loadRoleData();
+            setDashboardRefresh((k) => k + 1);
+          }}
+        />
+      )}
 
       {/* MODAL "SOBRE ESTA AYUDA" */}
       {aboutModalOpen && (

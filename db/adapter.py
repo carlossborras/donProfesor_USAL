@@ -89,5 +89,9 @@ class DatabaseAdapter:
             conn.commit()
             conn.close()
 
+    def execute_query(self, sql: str, params: tuple = ()) -> None:
+        """Alias compatible de execute_write para comandos DML/DDL."""
+        self.execute_write(sql, params)
+
 
 db_adapter = DatabaseAdapter()

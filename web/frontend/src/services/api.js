@@ -103,6 +103,38 @@ export async function clearDatasetApi(token) {
   return response.json();
 }
 
+export async function createStudentApi(token, studentData) {
+  const response = await fetch("/api/datos/alumno", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(studentData),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || "Error al registrar el estudiante");
+  }
+  return response.json();
+}
+
+export async function pasteStudentDataApi(token, dataText) {
+  const response = await fetch("/api/datos/pegar", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ data_text: dataText }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || "Error al importar los datos pegados");
+  }
+  return response.json();
+}
+
 export async function uploadCsvDatasetApi(token, file) {
   const formData = new FormData();
   formData.append("file", file);

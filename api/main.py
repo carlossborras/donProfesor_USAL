@@ -97,6 +97,40 @@ class DirectMCPQueryRequest(BaseModel):
     sql_query: str
 
 
+class StudentCreateRequest(BaseModel):
+    alumno_id: Optional[str] = None
+    escuela_id: Optional[str] = None
+    ugel: Optional[str] = None
+    distrito: Optional[str] = "Valle Alto"
+    zona_escuela: Optional[str] = "Rural"
+    sexo: str = "M"
+    edad: int = 14
+    grado_secundaria: int = 2
+    tamano_familia: str = "3 o menos"
+    educacion_madre_0_4: int = 2
+    educacion_padre_0_4: int = 2
+    ocupacion_madre: str = "Agricultora"
+    ocupacion_padre: str = "Agricultor"
+    internet_hogar: int = 0
+    tiempo_estudio_semanal: str = "2-5 h"
+    tiempo_desplazamiento: str = "15-30 min"
+    distancia_hogar_escuela_km: float = 3.5
+    repeticiones_previas: int = 0
+    apoyo_escolar: int = 0
+    apoyo_familiar: int = 1
+    beneficiario_juntos: int = 0
+    horas_trabajo_semanal: float = 0.0
+    dias_lectivos_previstos: int = 180
+    faltas_trimestre_1: int = 0
+    faltas_trimestre_2: int = 0
+    nota_trimestre_1_0_20: float = 12.0
+    nota_trimestre_2_0_20: float = 12.0
+
+
+class PasteDataRequest(BaseModel):
+    data_text: str
+
+
 @app.get("/api/db-status")
 def get_database_status() -> Dict[str, Any]:
     """Devuelve el estado real de la base de datos y el conteo exacto de registros en `alumnos_hack4edu`."""
@@ -542,6 +576,187 @@ def clear_dataset_endpoint(user: Dict[str, Any] = Depends(get_current_user)) -> 
         "message": "Base de datos vaciada (0 estudiantes en alumnos_hack4edu).",
         "total_importados": 0,
     }
+
+
+@app.post("/api/datos/alumno")
+def create_student_endpoint(
+    req: StudentCreateRequest, user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Registra manualmente un estudiante, calculando variables e infiriendo predicciones pedagógicas."""
+    import random
+    import pandas as pd
+    from model.train_predict import predict_dataset
+
+    alumno_id = (req.alumno_id or "").strip()
+    if not alumno_id:
+        alumno_id = f"ALU-{random.randint(20000, 99999)}"
+
+    escuela_id = (req.escuela_id or "").strip() or user.get("escuela_id") or "ESC-01"
+    ugel = (req.ugel or "").strip() or user.get("ugel") or "UGEL-01-NORTE"
+    distrito = req.distrito or "Valle Alto"
+    zona_escuela = req.zona_escuela or "Rural"
+
+    faltas_tot = req.faltas_trimestre_1 + req.faltas_trimestre_2
+    dias = max(req.dias_lectivos_previstos, 1)
+    asist_pct = max(0.0, min(100.0, round(((dias - faltas_tot) / dias) * 100, 2)))
+    prom_notas = round((req.nota_trimestre_1_0_20 + req.nota_trimestre_2_0_20) / 2.0, 2)
+
+    student_dict = {
+        "alumno_id": alumno_id,
+        "escuela_id": escuela_id,
+        "ugel": ugel,
+        "distrito": distrito,
+        "zona_escuela": zona_escuela,
+        "sexo": req.sexo,
+        "edad": req.edad,
+        "grado_secundaria": req.grado_secundaria,
+        "tamano_familia": req.tamano_familia,
+        "educacion_madre_0_4": req.educacion_madre_0_4,
+        "educacion_padre_0_4": req.educacion_padre_0_4,
+        "ocupacion_madre": req.ocupacion_madre,
+        "ocupacion_padre": req.ocupacion_padre,
+        "internet_hogar": req.internet_hogar,
+        "tiempo_estudio_semanal": req.tiempo_estudio_semanal,
+        "tiempo_desplazamiento": req.tiempo_desplazamiento,
+        "distancia_hogar_escuela_km": req.distancia_hogar_escuela_km,
+        "repeticiones_previas": req.repeticiones_previas,
+        "apoyo_escolar": req.apoyo_escolar,
+        "apoyo_familiar": req.apoyo_familiar,
+        "beneficiario_juntos": req.beneficiario_juntos,
+        "horas_trabajo_semanal": req.horas_trabajo_semanal,
+        "dias_lectivos_previstos": req.dias_lectivos_previstos,
+        "faltas_trimestre_1": req.faltas_trimestre_1,
+        "faltas_trimestre_2": req.faltas_trimestre_2,
+        "nota_trimestre_1_0_20": req.nota_trimestre_1_0_20,
+        "nota_trimestre_2_0_20": req.nota_trimestre_2_0_20,
+        "faltas_totales_calculadas": faltas_tot,
+        "asistencia_pct_calculada": asist_pct,
+        "promedio_notas_calculado": prom_notas,
+    }
+
+    df_single = pd.DataFrame([student_dict])
+    df_predicted = predict_dataset(df_single)
+    p_row = df_predicted.iloc[0]
+
+    prob_abandono = float(p_row.get("prob_abandono_pct", 10.0))
+    pred_nota3 = float(p_row.get("prediccion_nota_t3", prom_notas))
+    pred_falt3 = int(p_row.get("prediccion_faltas_t3", 5))
+    prob_beca = float(p_row.get("prob_perdida_beca_pct", 0.0))
+    prob_rep = float(p_row.get("prob_repeticion_pct", 10.0))
+    necesidad = str(p_row.get("necesidad_intervencion", "Baja"))
+    indice_desanimo = float(p_row.get("indice_desanimo", 20.0))
+    factor_riesgo = str(
+        p_row.get("factor_principal_riesgo", "Seguimiento pedagógico regular")
+    )
+    recom_pedag = str(
+        p_row.get("recomendacion_pedagogica", "Acompañamiento docente habitual.")
+    )
+
+    db_adapter.execute_write(
+        """
+        INSERT OR REPLACE INTO alumnos_hack4edu (
+            alumno_id, escuela_id, ugel, distrito, zona_escuela,
+            sexo, edad, grado_secundaria, tamano_familia,
+            educacion_madre_0_4, educacion_padre_0_4, ocupacion_madre, ocupacion_padre,
+            internet_hogar, tiempo_estudio_semanal, tiempo_desplazamiento, distancia_hogar_escuela_km,
+            repeticiones_previas, apoyo_escolar, apoyo_familiar, beneficiario_juntos, horas_trabajo_semanal,
+            dias_lectivos_previstos, faltas_trimestre_1, faltas_trimestre_2,
+            nota_trimestre_1_0_20, nota_trimestre_2_0_20,
+            faltas_totales_calculadas, asistencia_pct_calculada, promedio_notas_calculado,
+            prob_abandono_pct, prediccion_nota_t3, prediccion_faltas_t3,
+            prob_perdida_beca_pct, prob_repeticion_pct, necesidad_intervencion,
+            indice_desanimo, factor_principal_riesgo, recomendacion_pedagogica
+        ) VALUES (
+            ?, ?, ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, ?,
+            ?, ?,
+            ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?
+        );
+        """,
+        (
+            alumno_id,
+            escuela_id,
+            ugel,
+            distrito,
+            zona_escuela,
+            req.sexo,
+            req.edad,
+            req.grado_secundaria,
+            req.tamano_familia,
+            req.educacion_madre_0_4,
+            req.educacion_padre_0_4,
+            req.ocupacion_madre,
+            req.ocupacion_padre,
+            req.internet_hogar,
+            req.tiempo_estudio_semanal,
+            req.tiempo_desplazamiento,
+            req.distancia_hogar_escuela_km,
+            req.repeticiones_previas,
+            req.apoyo_escolar,
+            req.apoyo_familiar,
+            req.beneficiario_juntos,
+            req.horas_trabajo_semanal,
+            req.dias_lectivos_previstos,
+            req.faltas_trimestre_1,
+            req.faltas_trimestre_2,
+            req.nota_trimestre_1_0_20,
+            req.nota_trimestre_2_0_20,
+            faltas_tot,
+            asist_pct,
+            prom_notas,
+            prob_abandono,
+            pred_nota3,
+            pred_falt3,
+            prob_beca,
+            prob_rep,
+            necesidad,
+            indice_desanimo,
+            factor_riesgo,
+            recom_pedag,
+        ),
+    )
+
+    return {
+        "status": "ok",
+        "message": f"Estudiante {alumno_id} registrado y analizado exitosamente.",
+        "alumno_id": alumno_id,
+        "necesidad_intervencion": necesidad,
+        "factor_principal_riesgo": factor_riesgo,
+        "recomendacion_pedagogica": recom_pedag,
+    }
+
+
+@app.post("/api/datos/pegar")
+def paste_data_endpoint(
+    req: PasteDataRequest, user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Importa datos copiados y pegados directamente desde Excel o Google Sheets."""
+    text = (req.data_text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="El texto pegado está vacío.")
+
+    temp_path = ROOT_DIR / "db" / "pasted_dataset.csv"
+    temp_path.write_text(text, encoding="utf-8")
+    try:
+        count = import_csv_file(str(temp_path))
+        temp_path.unlink(missing_ok=True)
+        return {
+            "status": "ok",
+            "message": f"Se han importado y analizado exitosamente {count} estudiantes.",
+            "total_importados": count,
+        }
+    except Exception as exc:
+        temp_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400, detail=f"Error procesando datos pegados: {exc}"
+        )
 
 
 @app.get("/api/config/llm")

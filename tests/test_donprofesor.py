@@ -160,3 +160,73 @@ def test_langgraph_react_agent_and_ethical_guardrails():
     assert "mcp_trace" in res
     assert "execute_sql_query" in res["mcp_trace"]["tools_called"]
 
+
+def test_student_manual_entry_and_paste_batch():
+    clear_alumnos_table()
+
+    # Login como docente
+    login = client.post(
+        "/api/auth/login",
+        json={"username": "docente", "password": "donprofesor2026"},
+    ).json()
+    token = login["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Probar registro manual vía POST /api/datos/alumno
+    student_payload = {
+        "alumno_id": "ALU-TEST-999",
+        "escuela_id": "ESC-01",
+        "grado_secundaria": 2,
+        "sexo": "F",
+        "edad": 14,
+        "zona_escuela": "Rural",
+        "distancia_hogar_escuela_km": 4.5,
+        "tiempo_desplazamiento": "30-60 min",
+        "tiempo_estudio_semanal": "2-5 h",
+        "tamano_familia": "Mas de 3",
+        "internet_hogar": 0,
+        "horas_trabajo_semanal": 5,
+        "beneficiario_juntos": 1,
+        "apoyo_familiar": 1,
+        "apoyo_escolar": 0,
+        "faltas_trimestre_1": 6,
+        "faltas_trimestre_2": 14,
+        "nota_trimestre_1_0_20": 13.0,
+        "nota_trimestre_2_0_20": 9.5,
+    }
+    resp = client.post("/api/datos/alumno", headers=headers, json=student_payload)
+    assert resp.status_code == 200
+    res_data = resp.json()
+    assert res_data["status"] == "ok"
+    assert res_data["alumno_id"] == "ALU-TEST-999"
+    assert "necesidad_intervencion" in res_data
+    assert "recomendacion_pedagogica" in res_data
+
+    # Comprobar que la base de datos ahora tiene 1 registro con todas las columnas
+    st = client.get("/api/db-status").json()
+    assert st["total_alumnos_cargados"] == 1
+
+    # 2. Probar importación pegada vía POST /api/datos/pegar (formato Excel / TSV)
+    tsv_content = (
+        "alumno_id\tsexo\tedad\tgrado_secundaria\tdistancia_hogar_escuela_km\tfaltas_trimestre_1\tfaltas_trimestre_2\tnota_trimestre_1_0_20\tnota_trimestre_2_0_20\n"
+        "ALU-PASTE-01\tM\t15\t3\t2.1\t1\t3\t15.0\t14.5\n"
+        "ALU-PASTE-02\tF\t14\t2\t5.8\t8\t18\t11.0\t8.0\n"
+    )
+    paste_resp = client.post(
+        "/api/datos/pegar",
+        headers=headers,
+        json={"data_text": tsv_content},
+    )
+    assert paste_resp.status_code == 200
+    paste_data = paste_resp.json()
+    assert paste_data["status"] == "ok"
+    assert paste_data["total_importados"] == 2
+
+    # La base de datos ahora tiene 3 estudiantes
+    st2 = client.get("/api/db-status").json()
+    assert st2["total_alumnos_cargados"] == 3
+
+    # Limpiar tabla
+    clear_alumnos_table()
+
+

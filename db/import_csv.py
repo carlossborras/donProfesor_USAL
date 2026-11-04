@@ -9,8 +9,11 @@ import argparse
 import csv
 import random
 from pathlib import Path
+import numpy as np
+import pandas as pd
 from db.adapter import db_adapter
 from db.seed_db import init_and_seed_database, get_sqlite_connection
+from model.train_predict import predict_dataset, normalize_target_columns
 
 
 def clear_alumnos_table() -> int:
@@ -30,68 +33,176 @@ def import_csv_file(csv_path: str) -> int:
     if not path.exists():
         raise FileNotFoundError(f"Archivo no encontrado: {csv_path}")
 
+    # Detectar codificación y separador
+    df = None
+    for enc in ["utf-8-sig", "utf-8", "latin-1"]:
+        try:
+            for sep in [",", "\t", ";"]:
+                try:
+                    candidate = pd.read_csv(path, sep=sep, encoding=enc)
+                    if "alumno_id" in candidate.columns or len(candidate.columns) >= 5:
+                        df = candidate
+                        break
+                except Exception:
+                    continue
+            if df is not None:
+                break
+        except Exception:
+            continue
+
+    if df is None:
+        try:
+            df = pd.read_csv(path, sep=None, engine="python")
+        except Exception:
+            df = pd.read_csv(path)
+
+    # 1. Comprobar si tiene columnas objetivo o si hay que predecirlas
+    has_targets = any(
+        c in df.columns
+        for c in [
+            "prob_abandono_pct",
+            "abandono_escolar",
+            "nota_trimestre_3_real",
+            "necesidad_intervencion",
+        ]
+    )
+
+    if not has_targets:
+        # Ejecutar modelo predictivo para completar las 7 variables objetivo
+        df = predict_dataset(df)
+    else:
+        df = normalize_target_columns(df)
+        if (
+            "factor_principal_riesgo" not in df.columns
+            or df["factor_principal_riesgo"].isnull().all()
+        ):
+            factores = []
+            recoms = []
+            for _, row in df.iterrows():
+                dist = float(row.get("distancia_hogar_escuela_km") or 0)
+                trabajo = float(row.get("horas_trabajo_semanal") or 0)
+                prom = float(row.get("promedio_notas_calculado") or 12)
+                f2 = int(row.get("faltas_trimestre_2") or 0)
+                f1 = int(row.get("faltas_trimestre_1") or 0)
+
+                if dist >= 3.5 and f2 > f1 + 3:
+                    factores.append(
+                        f"Distancia de traslado ({dist} km) y ausencias acumuladas ({f1+f2} días)"
+                    )
+                    recoms.append(
+                        "Priorizar tutoría personalizada, flexibilizar calendario de tareas y evaluar apoyo de transporte escolar."
+                    )
+                elif trabajo > 5:
+                    factores.append(
+                        f"Carga laboral semanal ({trabajo} h) con riesgo de desvinculación escolar"
+                    )
+                    recoms.append(
+                        "Coordinar con la familia un cronograma flexible para compatibilizar la época de cosecha."
+                    )
+                elif prom < 11.0:
+                    factores.append(
+                        f"Descenso de rendimiento en el segundo trimestre (promedio {prom}/20)"
+                    )
+                    recoms.append(
+                        "Refuerzo pedagógico en materias instrumentales y acompañamiento individualizado."
+                    )
+                else:
+                    factores.append(
+                        "Evolución académica regular y compromiso escolar sostenido"
+                    )
+                    recoms.append("Acompañamiento pedagógico ordinario.")
+            df["factor_principal_riesgo"] = factores
+            df["recomendacion_pedagogica"] = recoms
+
+    # Asegurar columnas calculadas si no viniesen
+    if "faltas_trimestre_1" not in df.columns:
+        df["faltas_trimestre_1"] = 0
+    if "faltas_trimestre_2" not in df.columns:
+        df["faltas_trimestre_2"] = 0
+    if "nota_trimestre_1_0_20" not in df.columns:
+        df["nota_trimestre_1_0_20"] = 12.0
+    if "nota_trimestre_2_0_20" not in df.columns:
+        df["nota_trimestre_2_0_20"] = 12.0
+    if "dias_lectivos_previstos" not in df.columns:
+        df["dias_lectivos_previstos"] = 180
+
+    if "faltas_totales_calculadas" not in df.columns:
+        df["faltas_totales_calculadas"] = (
+            df["faltas_trimestre_1"].fillna(0) + df["faltas_trimestre_2"].fillna(0)
+        ).astype(int)
+
+    if "asistencia_pct_calculada" not in df.columns:
+        dias = df["dias_lectivos_previstos"].fillna(180).astype(int)
+        df["asistencia_pct_calculada"] = np.clip(
+            ((dias - df["faltas_totales_calculadas"]) / dias) * 100, 0.0, 100.0
+        ).round(2)
+
+    if "promedio_notas_calculado" not in df.columns:
+        df["promedio_notas_calculado"] = (
+            (
+                df["nota_trimestre_1_0_20"].fillna(12.0)
+                + df["nota_trimestre_2_0_20"].fillna(12.0)
+            )
+            / 2.0
+        ).round(2)
+
     rows_to_insert = []
-    with open(path, mode="r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for r in reader:
-            # Calcular variables derivadas si no vienen en el CSV
-            f1 = int(r.get("faltas_trimestre_1") or 0)
-            f2 = int(r.get("faltas_trimestre_2") or 0)
-            faltas_tot = int(r.get("faltas_totales_calculadas") or (f1 + f2))
-
-            dias = int(r.get("dias_lectivos_previstos") or 180)
-            asist_pct = float(
-                r.get("asistencia_pct_calculada")
-                or max(0.0, round(((dias - faltas_tot) / dias) * 100, 2))
+    for _, r in df.iterrows():
+        rows_to_insert.append(
+            (
+                str(r.get("alumno_id")),
+                str(r.get("escuela_id") or "ESC-01"),
+                str(r.get("ugel") or "UGEL-01-NORTE"),
+                str(r.get("distrito") or "Valle Alto"),
+                str(r.get("zona_escuela") or "Rural"),
+                str(r.get("sexo") or "M"),
+                int(r.get("edad") or 14),
+                int(r.get("grado_secundaria") or 2),
+                str(r.get("tamano_familia") or "3 o menos"),
+                int(r.get("educacion_madre_0_4") or 2),
+                int(r.get("educacion_padre_0_4") or 2),
+                str(r.get("ocupacion_madre") or "Agricultora"),
+                str(r.get("ocupacion_padre") or "Agricultor"),
+                int(r.get("internet_hogar") or 0),
+                str(r.get("tiempo_estudio_semanal") or "2-5 h"),
+                str(r.get("tiempo_desplazamiento") or "15-30 min"),
+                float(r.get("distancia_hogar_escuela_km") or 3.5),
+                int(r.get("repeticiones_previas") or 0),
+                int(r.get("apoyo_escolar") or 0),
+                int(r.get("apoyo_familiar") or 1),
+                int(r.get("beneficiario_juntos") or 0),
+                float(r.get("horas_trabajo_semanal") or 0.0),
+                int(r.get("dias_lectivos_previstos") or 180),
+                int(r.get("faltas_trimestre_1") or 0),
+                int(r.get("faltas_trimestre_2") or 0),
+                float(r.get("nota_trimestre_1_0_20") or 12.0),
+                float(r.get("nota_trimestre_2_0_20") or 12.0),
+                int(r.get("faltas_totales_calculadas") or 0),
+                float(r.get("asistencia_pct_calculada") or 90.0),
+                float(r.get("promedio_notas_calculado") or 12.0),
+                float(r["prob_abandono_pct"])
+                if pd.notnull(r.get("prob_abandono_pct"))
+                else None,
+                float(r["prediccion_nota_t3"])
+                if pd.notnull(r.get("prediccion_nota_t3"))
+                else None,
+                int(r["prediccion_faltas_t3"])
+                if pd.notnull(r.get("prediccion_faltas_t3"))
+                else None,
+                float(r["prob_perdida_beca_pct"])
+                if pd.notnull(r.get("prob_perdida_beca_pct"))
+                else None,
+                float(r["prob_repeticion_pct"])
+                if pd.notnull(r.get("prob_repeticion_pct"))
+                else None,
+                str(r.get("necesidad_intervencion") or "Baja"),
+                float(r["indice_desanimo"])
+                if pd.notnull(r.get("indice_desanimo"))
+                else None,
+                str(r.get("factor_principal_riesgo") or ""),
+                str(r.get("recomendacion_pedagogica") or ""),
             )
-
-            n1 = float(r.get("nota_trimestre_1_0_20") or 12.0)
-            n2 = float(r.get("nota_trimestre_2_0_20") or 12.0)
-            prom = float(r.get("promedio_notas_calculado") or round((n1 + n2) / 2.0, 2))
-
-            rows_to_insert.append(
-                (
-                    r.get("alumno_id"),
-                    r.get("escuela_id", "ESC-01"),
-                    r.get("ugel", "UGEL-01-NORTE"),
-                    r.get("distrito", "Valle Alto"),
-                    r.get("zona_escuela", "Rural"),
-                    r.get("sexo", "M"),
-                    int(r.get("edad") or 14),
-                    int(r.get("grado_secundaria") or 2),
-                    int(r.get("tamano_familia") or 4),
-                    int(r.get("educacion_madre_0_4") or 2),
-                    int(r.get("educacion_padre_0_4") or 2),
-                    r.get("ocupacion_madre", "Agricultora"),
-                    r.get("ocupacion_padre", "Agricultor"),
-                    int(r.get("internet_hogar") or 0),
-                    float(r.get("tiempo_estudio_semanal") or 5.0),
-                    int(r.get("tiempo_desplazamiento") or 30),
-                    float(r.get("distancia_hogar_escuela_km") or 3.5),
-                    int(r.get("repeticiones_previas") or 0),
-                    int(r.get("apoyo_escolar") or 0),
-                    int(r.get("apoyo_familiar") or 1),
-                    int(r.get("beneficiario_juntos") or 0),
-                    float(r.get("horas_trabajo_semanal") or 0.0),
-                    dias,
-                    f1,
-                    f2,
-                    n1,
-                    n2,
-                    faltas_tot,
-                    asist_pct,
-                    prom,
-                    float(r["prob_abandono_pct"]) if r.get("prob_abandono_pct") else None,
-                    float(r["prediccion_nota_t3"]) if r.get("prediccion_nota_t3") else None,
-                    int(r["prediccion_faltas_t3"]) if r.get("prediccion_faltas_t3") else None,
-                    float(r["prob_perdida_beca_pct"]) if r.get("prob_perdida_beca_pct") else None,
-                    float(r["prob_repeticion_pct"]) if r.get("prob_repeticion_pct") else None,
-                    r.get("necesidad_intervencion"),
-                    float(r["indice_desanimo"]) if r.get("indice_desanimo") else None,
-                    r.get("factor_principal_riesgo"),
-                    r.get("recomendacion_pedagogica"),
-                )
-            )
+        )
 
     conn = get_sqlite_connection()
     cur = conn.cursor()
@@ -131,7 +242,10 @@ def import_csv_file(csv_path: str) -> int:
 
 
 def generate_sample_dataset(count: int = 40) -> int:
-    """Genera datos realistas calibrados para pruebas antes de que P1 entregue el CSV final."""
+    """Carga los 30 alumnos de muestra oficial peruana si existen, o genera datos calibrados."""
+    sample_file = Path(__file__).resolve().parent.parent / "data" / "muestra_30_alumnos_peru.csv"
+    if sample_file.exists():
+        return import_csv_file(str(sample_file))
     apellidos = ["Quispe", "Flores", "Mamani", "Rojas", "Huamán", "Condori", "Díaz", "García", "Pérez", "Chávez"]
     nombres_m = ["José", "Juan", "Carlos", "Luis", "David", "Ángel", "Diego", "Mateo"]
     nombres_f = ["María", "Rosa", "Ana", "Lucía", "Carmen", "Sofía", "Camila", "Elena"]

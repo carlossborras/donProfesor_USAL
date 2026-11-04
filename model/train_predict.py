@@ -227,19 +227,111 @@ def prepare_features(df: pd.DataFrame) -> Tuple[np.ndarray, List[str]]:
             df_copy.get("nota_trimestre_1_0_20", 12.0) + df_copy.get("nota_trimestre_2_0_20", 12.0)
         ) / 2.0
 
+    # Normalizar campos de texto o intervalos a valores continuos o numéricos
+    if "tamano_familia" in df_copy.columns:
+        df_copy["tamano_familia"] = df_copy["tamano_familia"].replace({
+            "3 o menos": 3,
+            "Mas de 3": 5,
+            "3 o menos ": 3,
+            "Mas de 3 ": 5,
+        })
+        df_copy["tamano_familia"] = pd.to_numeric(df_copy["tamano_familia"], errors="coerce").fillna(4)
+
+    if "tiempo_estudio_semanal" in df_copy.columns:
+        df_copy["tiempo_estudio_semanal"] = df_copy["tiempo_estudio_semanal"].replace({
+            "Menos de 2 h": 1.5,
+            "2-5 h": 3.5,
+            "5-10 h": 7.5,
+            "Mas de 10 h": 12.0,
+        })
+        df_copy["tiempo_estudio_semanal"] = pd.to_numeric(df_copy["tiempo_estudio_semanal"], errors="coerce").fillna(5.0)
+
+    if "tiempo_desplazamiento" in df_copy.columns:
+        df_copy["tiempo_desplazamiento"] = df_copy["tiempo_desplazamiento"].replace({
+            "Menos de 15 min": 10,
+            "15-30 min": 22,
+            "30-60 min": 45,
+            "Mas de 60 min": 75,
+        })
+        df_copy["tiempo_desplazamiento"] = pd.to_numeric(df_copy["tiempo_desplazamiento"], errors="coerce").fillna(30)
+
+    for col in NUMERIC_FEATURES:
+        if col in df_copy.columns:
+            df_copy[col] = pd.to_numeric(df_copy[col], errors="coerce").fillna(0)
+        else:
+            df_copy[col] = 0
+
     X_num = df_copy[NUMERIC_FEATURES].fillna(0).values
 
     # Codificación de categóricas
-    zona_encoded = (df_copy["zona_escuela"].astype(str).str.lower() == "rural").astype(float).values[:, None]
-    sexo_encoded = (df_copy["sexo"].astype(str).str.upper() == "M").astype(float).values[:, None]
+    zona_series = df_copy["zona_escuela"].astype(str) if "zona_escuela" in df_copy.columns else pd.Series(["Rural"] * len(df_copy))
+    sexo_series = df_copy["sexo"].astype(str) if "sexo" in df_copy.columns else pd.Series(["F"] * len(df_copy))
+    zona_encoded = (zona_series.str.lower() == "rural").astype(float).values[:, None]
+    sexo_encoded = (sexo_series.str.upper() == "M").astype(float).values[:, None]
 
     X = np.hstack([X_num, zona_encoded, sexo_encoded])
     feature_names = NUMERIC_FEATURES + ["is_rural", "is_male"]
     return X, feature_names
 
 
+def normalize_target_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Normaliza las columnas objetivo desde el dataset oficial peruano si vienen con sus nombres originales."""
+    df_copy = df.copy()
+    if "prob_abandono_pct" not in df_copy.columns:
+        if "abandono_escolar" in df_copy.columns:
+            vals = df_copy["abandono_escolar"].astype(float)
+            df_copy["prob_abandono_pct"] = np.where(vals <= 1.0, vals * 100.0, vals)
+        else:
+            df_copy["prob_abandono_pct"] = 15.0
+
+    if "prediccion_nota_t3" not in df_copy.columns:
+        if "nota_trimestre_3_real" in df_copy.columns:
+            df_copy["prediccion_nota_t3"] = df_copy["nota_trimestre_3_real"].astype(float)
+        elif "nota_media_estimada" in df_copy.columns:
+            df_copy["prediccion_nota_t3"] = df_copy["nota_media_estimada"].astype(float)
+        else:
+            df_copy["prediccion_nota_t3"] = 12.0
+
+    if "prediccion_faltas_t3" not in df_copy.columns:
+        if "ausencias_trimestre_3" in df_copy.columns:
+            df_copy["prediccion_faltas_t3"] = df_copy["ausencias_trimestre_3"].astype(int)
+        else:
+            df_copy["prediccion_faltas_t3"] = 10
+
+    if "prob_perdida_beca_pct" not in df_copy.columns:
+        if "perdida_beca" in df_copy.columns:
+            vals = df_copy["perdida_beca"].astype(float)
+            df_copy["prob_perdida_beca_pct"] = np.where(vals <= 1.0, vals * 100.0, vals)
+        else:
+            df_copy["prob_perdida_beca_pct"] = 0.0
+
+    if "prob_repeticion_pct" not in df_copy.columns:
+        if "repeticion" in df_copy.columns:
+            vals = df_copy["repeticion"].astype(float)
+            df_copy["prob_repeticion_pct"] = np.where(vals <= 1.0, vals * 100.0, vals)
+        else:
+            df_copy["prob_repeticion_pct"] = 10.0
+
+    if "indice_desanimo" not in df_copy.columns:
+        if "desanimo_calculado" in df_copy.columns:
+            vals = df_copy["desanimo_calculado"].astype(float)
+            df_copy["indice_desanimo"] = np.where(vals <= 1.0, vals * 100.0, vals)
+        else:
+            df_copy["indice_desanimo"] = 25.0
+
+    if "necesidad_intervencion" not in df_copy.columns:
+        df_copy["necesidad_intervencion"] = np.where(
+            df_copy["prob_abandono_pct"] >= 50.0,
+            "Alta",
+            np.where(df_copy["prob_abandono_pct"] >= 25.0, "Media", "Baja"),
+        )
+
+    return df_copy
+
+
 def train_models(df_train: pd.DataFrame) -> Dict[str, Any]:
     """Entrena los estimadores Random Forest para cada variable objetivo."""
+    df_train = normalize_target_columns(df_train)
     X, feat_names = prepare_features(df_train)
 
     scaler = StandardScaler()
@@ -306,7 +398,10 @@ def predict_dataset(df_input: pd.DataFrame, pipeline: Dict[str, Any] = None) -> 
     df_res["prediccion_faltas_t3"] = np.round(np.clip(models["prediccion_faltas_t3"].predict(X_scaled), 0, 50)).astype(int)
     df_res["prob_perdida_beca_pct"] = np.round(np.clip(models["prob_perdida_beca_pct"].predict(X_scaled), 0.0, 100.0), 1)
     # Solo aplica pérdida de beca si es beneficiario de Juntos
-    df_res.loc[df_res["beneficiario_juntos"] == 0, "prob_perdida_beca_pct"] = 0.0
+    if "beneficiario_juntos" in df_res.columns:
+        df_res.loc[df_res["beneficiario_juntos"] == 0, "prob_perdida_beca_pct"] = 0.0
+    else:
+        df_res["prob_perdida_beca_pct"] = 0.0
 
     df_res["prob_repeticion_pct"] = np.round(np.clip(models["prob_repeticion_pct"].predict(X_scaled), 0.0, 100.0), 1)
     df_res["indice_desanimo"] = np.round(np.clip(models["indice_desanimo"].predict(X_scaled), 0.0, 100.0), 1)
@@ -359,7 +454,13 @@ if __name__ == "__main__":
         df.to_csv(target, index=False, encoding="utf-8")
         print(f"[OK] Generado dataset de entrenamiento con {len(df)} registros en {target}")
     elif args.train:
-        df = generate_synthetic_dataset(1500)
+        hist_csv = data_dir / "alumnos_peru_sintetico.csv"
+        if hist_csv.exists():
+            print(f"[INFO] Entrenando sobre dataset oficial peruano ({hist_csv})...")
+            df = pd.read_csv(hist_csv)
+        else:
+            print("[INFO] Generando dataset sintético para entrenamiento...")
+            df = generate_synthetic_dataset(1500)
         train_models(df)
     elif args.predict:
         df_in = pd.read_csv(args.predict)
