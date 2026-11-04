@@ -17,5 +17,5 @@ import uvicorn
 from api.main import app
 
 if __name__ == "__main__":
-    print("Iniciando DONPROFESOR (React Frontend + FastAPI JWT + MCP DB Server) en http://127.0.0.1:8000 ...")
-    uvicorn.run("api.main:app", host="127.0.0.1", port=8000, reload=False)
+    print("Iniciando DONPROFESOR (React Frontend + FastAPI JWT + MCP DB Server) en http://localhost:8000 (0.0.0.0:8000) ...")
+    uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=False)

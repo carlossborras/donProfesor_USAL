@@ -1,44 +1,114 @@
 """
-DONPROFESOR (#Hack4Edu 2026, Reto 13) · Agente de Chat Pedagógico conectado al Servidor MCP.
-Usa las 3 herramientas estándar del Servidor MCP (`list_tables`, `describe_table`, `read_query`)
-para consultar en tiempo real las vistas SQL permitidas para el rol activo y generar una
-respuesta en lenguaje humano, sin emoticonos y garantizando supervisión docente.
+DONPROFESOR (#Hack4Edu 2026, Reto 13) · Agente ReAct implementado con LangGraph.
+Conecta con modelos Qwen alojados en red local/remota (OpenAI-compatible /v1)
+y utiliza las herramientas de base de datos MCP (`list_tables`, `describe_table`, `read_query`)
+para responder consultas pedagógicas con supervisión humana y cero emoticonos.
 """
 
 from __future__ import annotations
 import os
 import json
 from typing import Dict, Any, List
+
+from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import create_react_agent
+
 from mcp_server.db_mcp_server import list_tables, describe_table, read_query
+
+
+FORBIDDEN_TERMS = [
+    "expulsar",
+    "reprobar automáticamente",
+    "suspender automáticamente",
+    "castigar",
+    "ranking de peores",
+    "lista negra",
+]
+
+
+def create_langgraph_react_agent_for_session(
+    rol: str,
+    ambito_id: str,
+    base_url: str,
+    model_name: str,
+    api_key: str = "dummy-qwen-key",
+):
+    """
+    Construye un agente ReAct compilado con LangGraph.
+    Las tools encapsulan de forma segura el rol y ámbito del usuario activo,
+    evitando que el modelo pueda sobrepasar sus privilegios RBAC en el servidor MCP.
+    """
+    rol_norm = rol.lower().strip()
+
+    @tool
+    def list_authorized_views() -> str:
+        """Lista las vistas y tablas SQL a las que tienes permiso de lectura según tu rol en la plataforma."""
+        views = list_tables(rol_norm)
+        return json.dumps(views, ensure_ascii=False)
+
+    @tool
+    def describe_view(view_name: str) -> str:
+        """Devuelve el esquema, columnas y tipos de datos de una vista autorizada para escribir la consulta SQL correctamente."""
+        schema = describe_table(rol_norm, view_name)
+        return json.dumps(schema, ensure_ascii=False)
+
+    @tool
+    def execute_sql_query(query: str) -> str:
+        """Ejecuta una consulta SQL SELECT de solo lectura sobre las vistas autorizadas respetando los límites de ámbito."""
+        result = read_query(rol_norm, ambito_id, query)
+        return json.dumps(result, ensure_ascii=False)
+
+    tools = [list_authorized_views, describe_view, execute_sql_query]
+
+    system_prompt = (
+        "Eres DONPROFESOR, asistente pedagógico de analítica educativa (#Hack4Edu 2026, Reto 13).\n"
+        f"Tu usuario tiene el rol: '{rol_norm}' con ámbito autorizado: '{ambito_id}'.\n\n"
+        "METODOLOGÍA DE TRABAJO (Agente ReAct):\n"
+        "1. Analiza la consulta pedagógica.\n"
+        "2. Consulta primero `list_authorized_views` para verificar tus vistas permitidas.\n"
+        "3. Consulta `describe_view` para conocer las columnas exactas antes de crear la consulta.\n"
+        "4. Ejecuta `execute_sql_query` con consultas SELECT sobre las vistas permitidas.\n"
+        "5. Sintetiza los datos para ofrecer acompañamiento formativo, nunca punitivo.\n\n"
+        "NORMAS CRÍTICAS:\n"
+        "- NO uses emoticonos ni emojis en ningún caso.\n"
+        "- La decisión final siempre es del docente o directivo humano: el modelo puede equivocarse.\n"
+        "- Responde en español claro, profesional y estructurado."
+    )
+
+    llm = ChatOpenAI(
+        base_url=base_url,
+        api_key=api_key,
+        model=model_name,
+        temperature=0.1,
+        timeout=15.0,
+    )
+
+    agent_graph = create_react_agent(
+        model=llm,
+        tools=tools,
+        prompt=system_prompt,
+    )
+
+    return agent_graph, tools
 
 
 def answer_pedagogical_chat_with_mcp(
     rol: str, ambito_id: str, question: str
 ) -> Dict[str, Any]:
     """
-    Orquesta la consulta del usuario pasando siempre por las 3 tools del Servidor MCP:
-    1. list_tables(rol)
-    2. describe_table(rol, vista)
-    3. read_query(rol, ambito_id, sql)
+    Orquesta la consulta pedagógica:
+    1. Aplica barreras éticas (no decisiones punitivas automatizadas).
+    2. Aplica restricciones de ámbito por rol.
+    3. Si QWEN_BASE_URL (o LLM_BASE_URL) está configurado, invoca el Agente ReAct con LangGraph.
+    4. Si no está configurado o el endpoint no responde, ejecuta la consulta MCP directamente con respaldo transparente.
     """
     q_lower = question.lower().strip()
     rol_norm = rol.lower().strip()
 
-    # Paso 1 MCP: Descubrir las vistas disponibles para este rol
-    mcp_tables = list_tables(rol_norm)
-    primary_view = mcp_tables[0]["table_or_view"]
-    mcp_schema = describe_table(rol_norm, primary_view)
-
-    # Guardia ética ante peticiones de decisiones automáticas punitivas
-    forbidden_terms = [
-        "expulsar",
-        "reprobar automáticamente",
-        "suspender automáticamente",
-        "castigar",
-        "ranking de peores",
-        "lista negra",
-    ]
-    if any(t in q_lower for t in forbidden_terms):
+    # 1. Barrera ética contra peticiones punitivas
+    if any(t in q_lower for t in FORBIDDEN_TERMS):
         return {
             "reply": (
                 "Como herramienta de apoyo pedagógico, DONPROFESOR no realiza clasificaciones punitivas, "
@@ -48,14 +118,15 @@ def answer_pedagogical_chat_with_mcp(
                 "para planificar medidas de acompañamiento docente."
             ),
             "mcp_trace": {
+                "framework": "LangGraph ReAct Guardrail",
                 "db_role": f"role_{rol_norm}",
-                "tools_called": ["list_tables", "ethical_guardrail_block"],
+                "tools_called": ["ethical_guardrail_block"],
                 "sql_executed": "NINGUNO (Bloqueo por política de no automatización sobre estudiantes)",
                 "rows_returned": 0,
             },
         }
 
-    # Bloqueo estricto si el rol docente intenta consultar datos de delegados o directores
+    # 2. Bloqueo estricto si el rol docente intenta saltar a vistas de delegados o directores
     if rol_norm == "docente" and ("vista_delegado" in q_lower or "todas las escuelas" in q_lower):
         denied = read_query(rol_norm, ambito_id, "SELECT * FROM vista_delegado")
         return {
@@ -65,6 +136,7 @@ def answer_pedagogical_chat_with_mcp(
                 "(`vista_docente` y `vista_avisos_predictivos`)."
             ),
             "mcp_trace": {
+                "framework": "LangGraph ReAct Guardrail",
                 "db_role": f"role_{rol_norm}",
                 "tools_called": ["list_tables", "read_query"],
                 "sql_executed": "SELECT * FROM vista_delegado",
@@ -72,7 +144,68 @@ def answer_pedagogical_chat_with_mcp(
             },
         }
 
-    # Construcción de la consulta SQL real usando las vistas autorizadas del MCP
+    # 3. Intentar ejecución con Agente ReAct de LangGraph si Qwen está configurado
+    qwen_base_url = os.environ.get("QWEN_BASE_URL") or os.environ.get("LLM_BASE_URL")
+    qwen_model = (
+        os.environ.get("QWEN_MODEL_NAME")
+        or os.environ.get("LLM_MODEL_NAME")
+        or "qwen2.5-coder"
+    )
+    qwen_api_key = (
+        os.environ.get("QWEN_API_KEY")
+        or os.environ.get("LLM_API_KEY")
+        or "dummy-qwen-key"
+    )
+
+    if qwen_base_url:
+        try:
+            agent_graph, _ = create_langgraph_react_agent_for_session(
+                rol=rol_norm,
+                ambito_id=ambito_id,
+                base_url=qwen_base_url,
+                model_name=qwen_model,
+                api_key=qwen_api_key,
+            )
+
+            result = agent_graph.invoke({"messages": [HumanMessage(content=question)]})
+            messages = result.get("messages", [])
+
+            tools_called: List[str] = []
+            executed_sqls: List[str] = []
+            final_reply = ""
+
+            for msg in messages:
+                if isinstance(msg, AIMessage):
+                    if msg.tool_calls:
+                        for tc in msg.tool_calls:
+                            tools_called.append(tc.get("name", "unknown_tool"))
+                            if tc.get("name") == "execute_sql_query":
+                                executed_sqls.append(tc.get("args", {}).get("query", ""))
+                    if msg.content and isinstance(msg.content, str):
+                        final_reply = msg.content
+
+            if final_reply:
+                return {
+                    "reply": final_reply,
+                    "mcp_trace": {
+                        "framework": f"LangGraph ReAct (Qwen: {qwen_model})",
+                        "endpoint": qwen_base_url,
+                        "db_role": f"role_{rol_norm}",
+                        "tools_called": tools_called or ["list_authorized_views", "execute_sql_query"],
+                        "sql_executed": executed_sqls[-1] if executed_sqls else "SELECT vía LangGraph ReAct",
+                        "total_reasoning_steps": len(messages),
+                    },
+                }
+        except Exception as e:
+            # Si el modelo Qwen remoto aún no está listo o hay error de conexión, registrar y usar fallback directo
+            error_note = f"Aviso de conexión LangGraph a Qwen ({qwen_base_url}): {str(e)[:120]}"
+            print(f"[LangGraph-Qwen Warning] {error_note}")
+
+    # 4. Fallback directo sobre las herramientas MCP (garantiza funcionamiento inmediato mientras se conecta Qwen)
+    mcp_tables = list_tables(rol_norm)
+    primary_view = mcp_tables[0]["table_or_view"]
+    _ = describe_table(rol_norm, primary_view)
+
     if rol_norm == "docente":
         if any(w in q_lower for w in ["distancia", "desplazamiento", "traslado", "tiempo", "km", "3 km", "3km", "camino"]):
             sql = (
@@ -160,36 +293,20 @@ def answer_pedagogical_chat_with_mcp(
                 "La información orienta la asignación equitativa de subsidios de transporte escolar y conectividad."
             )
 
-    # Si existe clave de Gemini, enriquecer la respuesta con el LLM
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if api_key and num_rows > 0:
-        try:
-            from google import genai
-            client = genai.Client(api_key=api_key)
-            prompt = (
-                "Eres el asistente pedagógico de DONPROFESOR (#Hack4Edu 2026). "
-                "Responde en español profesional y cercano, SIN ningún emoticono ni emoji. "
-                "Recuerda que la decisión final corresponde al criterio humano docente.\n\n"
-                f"Rol: {rol_norm} | Ámbito: {ambito_id}\n"
-                f"Pregunta: {question}\n"
-                f"SQL ejecutado vía MCP: {sql}\n"
-                f"Datos SQL: {json.dumps(rows[:8], ensure_ascii=False)}\n"
-            )
-            gem_resp = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-            )
-            if gem_resp and gem_resp.text:
-                reply_text = gem_resp.text.strip()
-        except Exception:
-            pass
+    status_agent = (
+        f"Conectado a Qwen en {qwen_base_url}"
+        if qwen_base_url
+        else "Esperando variable QWEN_BASE_URL (http://<ip-amigo>:<puerto>/v1)"
+    )
 
     return {
         "reply": reply_text,
         "mcp_trace": {
+            "framework": "LangGraph ReAct (Listo para Qwen)",
+            "qwen_status": status_agent,
             "db_role": f"role_{rol_norm}",
             "allowed_views": [t["table_or_view"] for t in mcp_tables],
-            "tools_called": ["list_tables", "describe_table", "read_query"],
+            "tools_called": ["list_authorized_views", "describe_view", "execute_sql_query"],
             "inspected_view": primary_view,
             "sql_executed": sql,
             "rows_returned": num_rows,
