@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  loginRole,
   fetchDashboardPanel,
   fetchMcpMetadata,
   sendMcpChatQuestion,
@@ -11,12 +10,8 @@ import {
   fetchLlmStatusApi,
   updateLlmConfigApi,
 } from "./services/api.js";
-import {
-  DocenteContextTable,
-  DirectorGroupsTable,
-  DelegadoTerritorialView,
-} from "./components/RoleViews.jsx";
-import { RainHarvestChart } from "./components/RainHarvestChart.jsx";
+import { DelegadoTerritorialView } from "./components/RoleViews.jsx";
+import { RoleDashboard } from "./components/RoleDashboard.jsx";
 
 /* ==========================================================================
    PISTAS INTERACTIVAS DE REFERENCIA (FIGMA) POR ROL
@@ -251,11 +246,13 @@ function mapDbAlertToPista(item, index) {
   };
 }
 
-export function App() {
-  const [activeRole, setActiveRole] = useState("docente");
+export function App({ session, onLogout }) {
+  // El rol y el ámbito vienen de la sesión (token JWT): no se pueden cambiar desde la interfaz.
+  const activeRole = session?.user?.rol || "docente";
   const [activeNav, setActiveNav] = useState("revisar"); // "revisar" | "comovamos" | "lohablamos"
-  const [token, setToken] = useState(null);
-  const [user, setUser] = useState(null);
+  const token = session?.token || null;
+  const user = session?.user || null;
+  const [dashboardRefresh, setDashboardRefresh] = useState(0);
   const [panelData, setPanelData] = useState(null);
   const [mcpMeta, setMcpMeta] = useState(null);
   const [llmStatus, setLlmStatus] = useState(null);
@@ -300,21 +297,21 @@ export function App() {
     }, 4000);
   };
 
-  const authenticateAndLoadRole = useCallback(async (roleToLoad) => {
+  const handleSessionExpired = useCallback(() => {
+    onLogout?.("Tu sesión ha caducado. Vuelve a iniciar sesión.");
+  }, [onLogout]);
+
+  const loadRoleData = useCallback(async () => {
+    if (!token) return;
     setLoading(true);
     setError(null);
+    setSelectedPistaIdx(0);
+    setAccompanimentOpen(false);
     try {
-      const authRes = await loginRole(roleToLoad, "donprofesor2026");
-      setToken(authRes.access_token);
-      setUser(authRes.user);
-      setActiveRole(roleToLoad);
-      setSelectedPistaIdx(0);
-      setAccompanimentOpen(false);
-
       const [panelRes, mcpRes, llmRes] = await Promise.all([
-        fetchDashboardPanel(authRes.access_token),
-        fetchMcpMetadata(authRes.access_token),
-        fetchLlmStatusApi(authRes.access_token).catch(() => null),
+        fetchDashboardPanel(token),
+        fetchMcpMetadata(token).catch(() => null),
+        fetchLlmStatusApi(token).catch(() => null),
       ]);
       setPanelData(panelRes);
       setMcpMeta(mcpRes);
@@ -324,28 +321,19 @@ export function App() {
         if (llmRes.model_name) setLlmModelInput(llmRes.model_name);
       }
     } catch (err) {
+      if (err.status === 401) {
+        handleSessionExpired();
+        return;
+      }
       setError(err.message || "Error al conectar con el servidor de DONPROFESOR");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [token, handleSessionExpired]);
 
   useEffect(() => {
-    authenticateAndLoadRole("docente");
-  }, [authenticateAndLoadRole]);
-
-  const handleSelectRole = async (newRole) => {
-    if (newRole === activeRole && token) return;
-    await authenticateAndLoadRole(newRole);
-    setChatHistory([
-      {
-        sender: "assistant",
-        text: `Has cambiado a la vista de ${ROLE_META[newRole]?.label || newRole}. El servidor MCP consulta ahora exclusivamente las vistas SQL autorizadas para tu rol.`,
-        sql: null,
-        rowsCount: 0,
-      },
-    ]);
-  };
+    loadRoleData();
+  }, [loadRoleData]);
 
   // Construir lista de pistas (de la BD real si hay filas, o las 3 pistas interactivas de Figma si la BD tiene 0 filas)
   const dbAlerts = panelData?.avisos_predictivos || [];
@@ -378,6 +366,7 @@ export function App() {
       setAccompanimentOpen(false);
       const refreshed = await fetchDashboardPanel(token);
       setPanelData(refreshed);
+      setDashboardRefresh((k) => k + 1);
       showToast(`Acompañamiento guardado en la base de datos para ${currentPista.kickerCard}.`);
     } catch (err) {
       showToast(err.message || "No se pudo guardar la anotación.");
@@ -438,6 +427,7 @@ export function App() {
       const res = await loadSampleDatasetApi(token);
       const refreshed = await fetchDashboardPanel(token);
       setPanelData(refreshed);
+      setDashboardRefresh((k) => k + 1);
       setSelectedPistaIdx(0);
       showToast(res.message || "30 estudiantes cargados en la base de datos.");
     } catch (err) {
@@ -454,6 +444,7 @@ export function App() {
       const res = await clearDatasetApi(token);
       const refreshed = await fetchDashboardPanel(token);
       setPanelData(refreshed);
+      setDashboardRefresh((k) => k + 1);
       setSelectedPistaIdx(0);
       showToast(res.message || "Base de datos vaciada (0 registros).");
     } catch (err) {
@@ -471,6 +462,7 @@ export function App() {
       const res = await uploadCsvDatasetApi(token, file);
       const refreshed = await fetchDashboardPanel(token);
       setPanelData(refreshed);
+      setDashboardRefresh((k) => k + 1);
       setSelectedPistaIdx(0);
       showToast(res.message || "Archivo CSV importado correctamente.");
     } catch (err) {
@@ -672,21 +664,13 @@ export function App() {
           </div>
 
           <div className="topbar-right">
-            <span className="role-switch-label">Estás en la vista de</span>
-            <div className="role-tabs-group" role="tablist" aria-label="Cambiar rol activo">
-              {["docente", "director", "delegado"].map((rKey) => (
-                <button
-                  key={rKey}
-                  type="button"
-                  role="tab"
-                  aria-selected={activeRole === rKey}
-                  className={`role-tab-link ${activeRole === rKey ? "active" : ""}`}
-                  onClick={() => handleSelectRole(rKey)}
-                >
-                  {ROLE_META[rKey].label}
-                </button>
-              ))}
+            <div className="session-chip" title={user?.titulo_cargo || ""}>
+              <span className="session-name">{user?.nombre_completo || user?.username}</span>
+              <span className="session-role">{ROLE_META[activeRole]?.label || activeRole}</span>
             </div>
+            <button type="button" className="btn-outline-calm btn-logout" onClick={() => onLogout?.()}>
+              Cerrar sesión
+            </button>
           </div>
         </header>
 
@@ -953,62 +937,23 @@ export function App() {
             VISTA 2: "CÓMO VAMOS" (ANALÍTICA SQL EN VIVO, 37 VARIABLES, SIMULADOR)
            ================================================================== */}
         {activeNav === "comovamos" && (
-          <main className="edusight-content">
-            <div className="section-kicker">PANORAMA DEL GRUPO Y CONTEXTO</div>
-            <h1 className="hero-serif-title">Cómo vamos esta semana.</h1>
-            <p className="hero-subtitle">
-              Indicadores calculados mediante SQL sobre las 37 variables oficiales de Hack4Edu (Reto 13) para la vista de {roleInfo.label}.
-            </p>
-
-            {/* KPIs */}
-            <div className="kpi-calm-grid">
-              {(panelData?.kpis || []).map((k, idx) => (
-                <div className="kpi-calm-card" key={idx}>
-                  <div className="kpi-calm-label">{k.label}</div>
-                  <div className="kpi-calm-value">{k.value}</div>
-                  <div className="kpi-calm-context">{k.context}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* GRÁFICO DE ASISTENCIA / LLUVIA SI EXISTEN DATOS */}
-            {(activeRole === "docente" || activeRole === "director") &&
-              (panelData?.serie_lluvia_cosecha || []).length > 0 && (
-                <div className="calm-card">
-                  <RainHarvestChart
-                    serie={panelData?.serie_lluvia_cosecha || []}
-                    role={activeRole}
-                  />
-                </div>
-              )}
-
-            {/* TABLAS ESPECÍFICAS SEGÚN EL ROL ACTIVO */}
-            {activeRole === "docente" && (
-              <div className="calm-card">
-                <DocenteContextTable
-                  alumnos={panelData?.alumnos_contexto || []}
-                  onLoadSample={handleLoadSampleData}
-                />
-              </div>
-            )}
-
-            {activeRole === "director" && (
-              <div className="calm-card">
-                <DirectorGroupsTable
-                  grupos={panelData?.grupos_centro || []}
-                  onLoadSample={handleLoadSampleData}
-                />
-              </div>
-            )}
-
+          <>
+            <RoleDashboard
+              token={token}
+              role={activeRole}
+              onUnauthorized={handleSessionExpired}
+              refreshKey={dashboardRefresh}
+            />
             {activeRole === "delegado" && (
-              <DelegadoTerritorialView
-                escuelas={panelData?.escuelas_red || []}
-                token={token}
-                onLoadSample={handleLoadSampleData}
-              />
+              <main className="edusight-content" style={{ paddingTop: 0 }}>
+                <DelegadoTerritorialView
+                  escuelas={panelData?.escuelas_red || []}
+                  token={token}
+                  onLoadSample={handleLoadSampleData}
+                />
+              </main>
             )}
-          </main>
+          </>
         )}
 
         {/* ==================================================================
