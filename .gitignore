@@ -4,3 +4,6 @@ __pycache__/
 .pytest_cache/
 db/donprofesor.db
 .env
+# pixi environments
+.pixi/*
+!.pixi/config.toml

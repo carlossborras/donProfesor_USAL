@@ -39,6 +39,8 @@ El sistema se divide en **dos grandes flujos** conectados a la Base de Datos med
 
 ```text
 hack4edu/
+├── pixi.toml                           # Configuración del entorno reproducible y tareas Pixi
+├── pixi.lock                           # Bloqueo determinista multiplataforma (Windows, Linux, macOS)
 ├── db/
 │   ├── adapter.py                      # Adaptador desacoplado (Semilla Provisional <-> PostgreSQL externo)
 │   ├── schema.sql                      # Esquema relacional de las 5 dimensiones + tabla prediccion
@@ -77,30 +79,40 @@ hack4edu/
 
 ---
 
-## Ejecución Rápida
+## Ejecución con Pixi
 
-### Opción A: Ejecución directa con `uv` (arranca Backend + Frontend React en `http://localhost:8000`)
+El proyecto está gestionado con **[Pixi](https://pixi.sh)** para garantizar un entorno idéntico y sin conflictos entre Windows, Linux y macOS.
+
+### 1. Iniciar la plataforma (Backend + Frontend React)
 ```bash
-uv sync
-uv run python web/app.py
+pixi run start
 ```
 Abre en el navegador: `http://localhost:8000`
 
-### Opción B: Desarrollo Frontend con Vite (opcional si tienes Node.js instalado)
+### 2. Ejecutar la suite de pruebas
+```bash
+pixi run test
+```
+
+### 3. Regenerar la semilla provisional de Base de Datos
+```bash
+pixi run seed
+```
+
+### 4. Conectar a la Base de Datos PostgreSQL definitiva del equipo
+```bash
+# En PowerShell:
+$env:DATABASE_URL="postgresql://postgres:postgres@localhost:5432/donprofesor"
+pixi run start
+
+# En Bash:
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/donprofesor"
+pixi run start
+```
+
+### 5. Desarrollo Frontend con Vite (opcional)
 ```bash
 cd web/frontend
 npm install
 npm run dev
-```
-
-### Opción C: Conectar a la Base de Datos PostgreSQL definitiva del equipo
-```bash
-# En PowerShell:
-$env:DATABASE_URL="postgresql://postgres:postgres@localhost:5432/donprofesor"
-uv run python web/app.py
-```
-
-### Ejecutar las pruebas automatizadas
-```bash
-uv run pytest -v
 ```

@@ -1,0 +1,30 @@
+[workspace]
+authors = ["borja.valher <borja.valher@usal.es>"]
+channels = ["conda-forge"]
+name = "hack4edu"
+platforms = ["win-64", "linux-64", "osx-arm64", "osx-64"]
+version = "0.1.0"
+
+[tasks]
+start = "python web/app.py"
+test = "pytest -v"
+seed = "python -m db.seed_db"
+
+[dependencies]
+python = ">=3.11,<3.13"
+fastapi = ">=0.162.0,<0.163"
+uvicorn = ">=0.54.0,<0.55"
+pydantic = ">=2.14.2,<3"
+sqlalchemy = ">=2.1.8,<3"
+httpx = ">=0.28.1,<0.29"
+pyjwt = ">=2.15.1,<3"
+pytest = ">=9.2.0,<10"
+python-multipart = ">=0.0.33,<0.0.34"
+pandas = ">=3.1.0,<4"
+numpy = ">=2.5.4,<3"
+plotly = ">=7.1.0,<8"
+
+[pypi-dependencies]
+psycopg2-binary = ">=2.9.10"
+mcp = ">=2.3.0"
+google-genai = ">=2.34.0"
