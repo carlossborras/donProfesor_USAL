@@ -154,7 +154,7 @@ def create_langgraph_react_agent_for_session(
     tools = [list_authorized_views, describe_view, execute_sql_query]
 
     system_prompt = (
-        "Eres DONPROFESOR (EduSight · Faro Educativo), asistente pedagógico de analítica educativa (#Hack4Edu 2026, Reto 13).\n"
+        "Eres DONPROFESOR (Faro Educativo), asistente pedagógico de analítica educativa (#Hack4Edu 2026, Reto 13).\n"
         f"Tu usuario tiene el rol: '{rol_norm}' con ámbito autorizado: '{describe_scope(ambito_id)}'.\n\n"
         "METODOLOGÍA DE TRABAJO (Agente ReAct):\n"
         "1. Analiza la consulta pedagógica.\n"

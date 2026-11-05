@@ -378,7 +378,7 @@ export function App({ session, onLogout }) {
               <path d="M11.6 28H22.4" stroke="#1F6351" strokeWidth="1.4" />
             </svg>
             <div>
-              <div className="edusight-brand-name">EduSight</div>
+              <div className="edusight-brand-name">DONPROFESOR</div>
               <div className="edusight-brand-sub">FARO EDUCATIVO</div>
             </div>
           </div>
@@ -948,7 +948,7 @@ export function App({ session, onLogout }) {
                       <span className="msg-sender">
                         {msg.sender === "user"
                           ? "Tu consulta pedagógica"
-                          : `Ayudante EduSight · Rol ${roleInfo.label}`}
+                          : `Ayudante DONPROFESOR · Rol ${roleInfo.label}`}
                       </span>
                       <div style={{ whiteSpace: "pre-line" }}>{msg.text}</div>
 
@@ -970,7 +970,7 @@ export function App({ session, onLogout }) {
 
                   {chatLoading && (
                     <div className="msg-bubble msg-assistant">
-                      <span className="msg-sender">Asistente EduSight</span>
+                      <span className="msg-sender">Asistente DONPROFESOR</span>
                       <div>Consultando los registros del aula...</div>
                     </div>
                   )}
@@ -1124,7 +1124,7 @@ export function App({ session, onLogout }) {
       {aboutModalOpen && (
         <div className="modal-backdrop" onClick={() => setAboutModalOpen(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h3>Sobre EduSight · DONPROFESOR (#Hack4Edu 2026)</h3>
+            <h3>Sobre DONPROFESOR (#Hack4Edu 2026)</h3>
             <p style={{ fontSize: "13.5px", color: "#4e5d55", marginTop: "8px" }}>
               Esta plataforma acompaña a docentes, equipos directivos y coordinadores de UGEL sin sustituir nunca el juicio profesional humano ni etiquetar a los estudiantes.
             </p>
