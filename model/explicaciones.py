@@ -70,6 +70,10 @@ def describir_valor(variable: str, valor: Any) -> Optional[str]:
         return f"{float(valor):g} h"
     if variable == "repeticiones_previas":
         return f"{int(float(valor))}"
+    if variable == "edad":
+        return f"{int(float(valor))} años"
+    if isinstance(valor, (int, float)):
+        return f"{float(valor):g}"
     return str(valor)
 
 
