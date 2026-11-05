@@ -166,6 +166,15 @@ def test_docente_no_recibe_porcentajes_individuales(client):
     assert "prob_" not in texto
 
 
+def test_factores_solo_si_se_sugiere_revision(client):
+    h = _token(client, "doc.uno", "docente", escuela_id="ESC-07", grado_secundaria=2)
+    client.post("/api/datos/alumno", headers=h, json=_alumno(1, lejos=True))
+    client.post("/api/datos/alumno", headers=h, json=_alumno(2, lejos=False))
+    alumnos = {a["alumno_id"]: a for a in client.get("/api/predicciones", headers=h).json()["tablas"]["alumnos"]}
+    assert alumnos["P-001"]["sugerir_revision"] and alumnos["P-001"]["factores"]
+    assert not alumnos["P-002"]["sugerir_revision"] and alumnos["P-002"]["factores"] == []
+
+
 def test_secciones_ordenadas_por_interes_del_rol(client):
     h = _token(client, "doc.uno", "docente", escuela_id="ESC-07", grado_secundaria=2)
     for i in range(6):

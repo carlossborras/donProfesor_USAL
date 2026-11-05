@@ -60,7 +60,7 @@ function grafico(seccion, notaAprobatoria) {
         categories={["1.er trim.", "2.º trim.", "3.er trim."]}
         series={[
           { name: "Real", values: [s.reales?.t1, s.reales?.t2, null], color: "#6f8f86" },
-          { name: "Prevista", values: [s.previstas.t1, s.previstas.t2, s.previstas.t3], color: esNota ? "#1f6351" : "#c08a3e" },
+          { name: "Prevista por perfil", values: [s.previstas.t1, s.previstas.t2, s.previstas.t3], color: esNota ? "#1f6351" : "#c08a3e" },
         ]}
         max={esNota ? 20 : undefined}
         refLine={esNota ? notaAprobatoria : undefined}
@@ -108,7 +108,10 @@ function TablaDocente({ alumnos = [] }) {
       <div className="calm-card-header">
         <div>
           <div className="calm-card-title">Tu clase, estudiante a estudiante</div>
-          <div className="calm-card-sub">Niveles orientativos (sin porcentajes), ordenados por código: no es un ranking.</div>
+          <div className="calm-card-sub">
+            Niveles orientativos (sin porcentajes), ordenados por código: no es un ranking. Las previsiones salen del perfil
+            de matrícula de cada estudiante (distancia, familia, trabajo…); el modelo no usa sus notas ni faltas reales.
+          </div>
         </div>
         <label className="dash-toggle">
           <input type="checkbox" checked={soloRevision} onChange={(e) => setSoloRevision(e.target.checked)} />
@@ -122,8 +125,9 @@ function TablaDocente({ alumnos = [] }) {
               <th>Código</th>
               <th>Necesidad de intervención</th>
               <th>Desánimo</th>
-              <th>Nota T1 → T2 → T3 prevista</th>
-              <th>Faltas T3 previstas</th>
+              <th>Notas reales T1 y T2</th>
+              <th>Nota T3 prevista por perfil</th>
+              <th>Faltas T3 previstas por perfil</th>
               <th>Abandono</th>
               <th>Repetición</th>
               <th className="col-baja">Pérdida de beca</th>
@@ -135,14 +139,19 @@ function TablaDocente({ alumnos = [] }) {
               <tr key={a.alumno_id}>
                 <td className="mono">{a.alumno_id}</td>
                 {a.prediccion_pendiente ? (
-                  <td colSpan={7} className="muted">Predicción pendiente (el modelo no estaba disponible al guardarlo).</td>
+                  <td colSpan={8} className="muted">Predicción pendiente (el modelo no estaba disponible al guardarlo).</td>
                 ) : (
                   <>
                     <td><Nivel valor={a.necesidad} /></td>
                     <td><Nivel valor={a.desanimo} /></td>
                     <td>
-                      {formatValue(a.nota_t1)} → {formatValue(a.nota_t2)} → <strong>{formatValue(a.nota_t3_prevista)}</strong>
+                      {a.nota_t1 === null && a.nota_t2 === null ? (
+                        <span className="muted">Sin notas aún</span>
+                      ) : (
+                        <>{formatValue(a.nota_t1)} · {formatValue(a.nota_t2)}</>
+                      )}
                     </td>
+                    <td><strong>{formatValue(a.nota_t3_prevista)}</strong></td>
                     <td>{formatValue(a.faltas_t3_previstas, "", 0)}</td>
                     <td><Nivel valor={a.abandono} /></td>
                     <td><Nivel valor={a.repeticion} /></td>
@@ -157,7 +166,7 @@ function TablaDocente({ alumnos = [] }) {
                       ))}
                     </ul>
                   ) : (
-                    <span className="muted">—</span>
+                    <span className="muted">{a.sugerir_revision ? "—" : "Sin revisión sugerida"}</span>
                   )}
                 </td>
               </tr>
