@@ -3,7 +3,7 @@ DONPROFESOR (#Hack4Edu) · Adaptador Desacoplado de Base de Datos (Provisional -
 
 Como la Base de Datos definitiva la está construyendo otro compañero del equipo:
 1. Por defecto (`DB_MODE=PROVISIONAL_SEED`), utiliza la base de datos provisional pre-sembrada
-   con las vistas `vista_docente`, `vista_director`, `vista_director_clima`, `vista_delegado` y `vista_avisos_predictivos`.
+   con las vistas `vista_docente`, `vista_director`, `vista_delegado` y `vista_avisos_predictivos`.
 2. En cuanto el compañero entregue la Base de Datos PostgreSQL definitiva, basta con definir la variable
    de entorno `DATABASE_URL=postgresql://usuario:clave@host:5432/nombre_bd` y este adaptador redirige
    todas las consultas de la API y del Servidor MCP a PostgreSQL sin cambiar ni una línea de React ni de FastAPI.

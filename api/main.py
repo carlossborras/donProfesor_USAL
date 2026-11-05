@@ -18,6 +18,16 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+# Cargar .env ANTES de importar los módulos del proyecto: algunos leen la configuración al importarse
+# (p. ej. DATABASE_URL en db/adapter.py o los umbrales de api/dashboards.py).
+_env_path = Path(__file__).resolve().parent.parent / ".env"
+if _env_path.exists():
+    for _line in _env_path.read_text(encoding="utf-8").splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1)
+            os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
+
 from db.seed_db import init_and_seed_database
 from db.adapter import db_adapter
 from db.students import where_ambito
@@ -32,15 +42,6 @@ from api.predictions import router as predictions_router
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = ROOT_DIR / "web" / "frontend"
-
-# Cargar automáticamente variables de entorno desde .env si existe
-_env_path = ROOT_DIR / ".env"
-if _env_path.exists():
-    for _line in _env_path.read_text(encoding="utf-8").splitlines():
-        _line = _line.strip()
-        if _line and not _line.startswith("#") and "=" in _line:
-            _k, _v = _line.split("=", 1)
-            os.environ.setdefault(_k.strip(), _v.strip())
 
 # El secreto JWT, el registro y el login viven en api/security.py y api/auth.py
 
