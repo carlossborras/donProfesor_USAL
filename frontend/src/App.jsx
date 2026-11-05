@@ -1027,24 +1027,31 @@ export function App({ session, onLogout }) {
                     </div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                      {actionsLog.slice(0, 5).map((a) => (
-                        <div
-                          key={a.accion_id}
-                          style={{
-                            fontSize: "12.5px",
-                            paddingBottom: "8px",
-                            borderBottom: "1px solid #e8e7df",
-                          }}
-                        >
-                          <strong style={{ color: "#1f6351" }}>{a.prediccion_id}</strong>:{" "}
-                          {a.decision_tomada}
-                          {a.comentario_pedagogico && (
-                            <div style={{ color: "#6b7871", fontSize: "11.5px", marginTop: "2px" }}>
-                              {a.comentario_pedagogico}
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                      {actionsLog.slice(0, 5).map((a) => {
+                        const studentLabel = a.alumno_id
+                          ? (a.alumno_id.startsWith("ALU-") || a.alumno_id.startsWith("alu-")
+                              ? `Estudiante ${a.alumno_id}`
+                              : a.alumno_id)
+                          : (a.prediccion_id ? `Estudiante ${a.prediccion_id}` : "Estudiante");
+                        return (
+                          <div
+                            key={a.accion_id}
+                            style={{
+                              fontSize: "12.5px",
+                              paddingBottom: "8px",
+                              borderBottom: "1px solid #e8e7df",
+                            }}
+                          >
+                            <strong style={{ color: "#1f6351" }}>{studentLabel}</strong>:{" "}
+                            {a.decision_tomada}
+                            {a.comentario_pedagogico && (
+                              <div style={{ color: "#6b7871", fontSize: "11.5px", marginTop: "2px" }}>
+                                {a.comentario_pedagogico}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
