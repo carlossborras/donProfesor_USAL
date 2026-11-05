@@ -2,10 +2,10 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-db/donprofesor.db
+backend/db/donprofesor.db
 *.db
 .env
-web/frontend/node_modules/
+frontend/node_modules/
 
 # pixi environments
 .pixi/*

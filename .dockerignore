@@ -1,8 +1,8 @@
-web/frontend/node_modules
+frontend/node_modules
 .pixi
 .venv
 **/__pycache__
-db/*.db
+backend/db/*.db
 *.db
 .env
 .git

@@ -20,7 +20,7 @@ cd hack4edu
 
 # 2. Instalar el entorno (Python, scikit-learn 1.6.1, LightGBM, Node...) y las dependencias del frontend
 pixi install
-pixi run npm --prefix web/frontend install
+pixi run frontend-install
 
 # 3. Configurar variables de entorno (LLM, JWT, umbrales del modelo...)
 cp .env.example .env
@@ -30,11 +30,28 @@ pixi run modelo-estado     # debe decir "disponible": true
 pixi run start
 ```
 
-> El modelo se entrenó con scikit-learn 1.6.1: no cambies esa versión o `modelo.joblib` no se podrá leer.
+> El modelo se entrenó con scikit-learn 1.6.1: no cambies esa versión o `ml/modelo.joblib` no se podrá leer.
 
 Abre tu navegador en `http://localhost:8000` (o `http://127.0.0.1:8000`).
 
 ---
+
+## Estructura del repositorio
+
+```
+backend/            Servidor Python (FastAPI)
+  api/              Endpoints: auth, paneles, predicciones, carga de datos
+  db/               Esquema, vistas por rol, adaptador SQLite/PostgreSQL, alta de estudiantes
+  model/            Motor de predicción: carga ml/modelo.joblib, predice y explica
+  mcp_server/       Servidor MCP y agente del asistente «Lo hablamos»
+  scripts/          Utilidades de línea de comandos (estado del modelo, recalcular, cargar CSV)
+  tests/            Pruebas (pytest)
+  run.py            Arranque del servidor (pixi run start)
+frontend/           Aplicación React (Vite): src/, dist/ compilado
+ml/                 Entrenamiento (entrenadorModelo.py) y modelo entrenado (modelo.joblib)
+data/               CSV de ejemplo y dataset sintético
+docs/               Documentación del reto
+```
 
 ## Acceso con cuenta y vistas por rol (login y registro)
 
@@ -85,8 +102,8 @@ Pruebas: `pixi run test` (incluye `tests/test_auth_dashboards.py`, que usa una b
 - Registro inmutable de trazabilidad ética: `registro_accion_humana`.
 
 ### 2. Modelo predictivo (LightGBM + Random Forest, Persona 2)
-- Se entrena con `entrenadorModelo.py` (Carlos) y se guarda en `modelo.joblib` (ruta configurable con `DONPROFESOR_MODEL_PATH`).
-- **Cada vez que se da de alta, se importa (CSV o pegado) o se carga la muestra de un estudiante, la API ejecuta el modelo al momento** (`db/students.py` -> `model/predictor.py`) y guarda:
+- Se entrena con `ml/entrenadorModelo.py` (Carlos) y se guarda en `ml/modelo.joblib` (ruta configurable con `DONPROFESOR_MODEL_PATH`).
+- **Cada vez que se da de alta, se importa (CSV o pegado) o se carga la muestra de un estudiante, la API ejecuta el modelo al momento** (`backend/db/students.py` -> `backend/model/predictor.py`) y guarda:
   - probabilidades de abandono, pérdida de la beca Juntos (solo si la familia está en Juntos) y repetición;
   - necesidad de intervención (Alta / Media / Baja);
   - notas y faltas previstas de los tres trimestres e índice de desánimo (0-10);
@@ -96,10 +113,10 @@ Pruebas: `pixi run test` (incluye `tests/test_auth_dashboards.py`, que usa una b
 
 Comandos del modelo:
 ```bash
-pixi run train            # reentrena con entrenadorModelo.py (deja el .joblib en la raíz)
+pixi run train            # reentrena con entrenadorModelo.py (se ejecuta en ml/)
 pixi run modelo-estado    # comprueba que la API puede cargar el modelo
 pixi run recalcular       # recalcula las predicciones de todos los estudiantes
-pixi run python -m scripts.predicciones recalcular --solo-pendientes
+pixi run recalcular --solo-pendientes
 ```
 
 ### 3. Agente ReAct con LangGraph y LLM Qwen (Bloque Chat MCP)
@@ -120,7 +137,7 @@ Desde la barra superior de la web (siempre dentro del ámbito de tu sesión):
 
 Por línea de comandos:
 ```bash
-pixi run python -m scripts.predicciones cargar --csv data/muestra_30_alumnos_peru.csv --escuela ESC-01 --ugel "UGEL Cusco"
+pixi run cargar-csv --csv data/muestra_30_alumnos_peru.csv --escuela ESC-01 --ugel "UGEL Cusco"
 ```
 
 ---

@@ -9,8 +9,8 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-      - ./db/views_and_grants.sql:/docker-entrypoint-initdb.d/02_views_and_grants.sql:ro
+      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./backend/db/views_and_grants.sql:/docker-entrypoint-initdb.d/02_views_and_grants.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d donprofesor"]
       interval: 5s
@@ -24,7 +24,7 @@ services:
       - "8000:8000"
     environment:
       DONPROFESOR_JWT_SECRET: "${DONPROFESOR_JWT_SECRET:-}"
-      DONPROFESOR_MODEL_PATH: "/app/modelo.joblib"
+      DONPROFESOR_MODEL_PATH: "/app/ml/modelo.joblib"
       QWEN_BASE_URL: "${QWEN_BASE_URL:-}"
       QWEN_MODEL_NAME: "${QWEN_MODEL_NAME:-donprofesor-llm}"
       QWEN_API_KEY: "${QWEN_API_KEY:-}"

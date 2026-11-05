@@ -2,7 +2,7 @@
 Pruebas de integración generales de DONPROFESOR (#Hack4Edu 2026, Reto 13):
   1. Base de datos vacía por defecto y paneles sin datos inventados.
   2. Servidor MCP: cada rol solo ve su vista y siempre filtrada por su ámbito.
-  3. Frontend servido y web/app.py importable.
+  3. Frontend servido y backend/run.py importable.
   4. Agente LangGraph y barrera ética.
 
 Usan una base de datos SQLite TEMPORAL. Las pruebas del flujo de predicción están en test_predicciones.py.
@@ -90,7 +90,7 @@ def test_frontend_servido_y_web_app_importable(client):
     r = client.get("/")
     assert r.status_code == 200
     assert "root" in r.text
-    cmd = [sys.executable, "-c", "import runpy; m = runpy.run_path('web/app.py', run_name='not_main'); assert 'app' in m"]
+    cmd = [sys.executable, "-c", "import runpy; m = runpy.run_path('run.py', run_name='not_main'); assert 'app' in m"]
     proc = subprocess.run(cmd, cwd=str(ROOT_DIR), capture_output=True, text=True, check=False)
     assert proc.returncode == 0, proc.stderr
 

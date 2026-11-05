@@ -6,13 +6,15 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64"]
 version = "0.1.0"
 
 [tasks]
-build = "npm --prefix web/frontend run build"
-start = { cmd = "python web/app.py", depends-on = ["build"] }
+frontend-install = "npm --prefix frontend install"
+build = "npm --prefix frontend run build"
+start = { cmd = "python backend/run.py", depends-on = ["build"] }
 test = "pytest -v"
-seed = "python -m db.seed_db"
-train = "python entrenadorModelo.py"
-modelo-estado = "python -m scripts.predicciones estado"
-recalcular = "python -m scripts.predicciones recalcular"
+seed = { cmd = "python -m db.seed_db", cwd = "backend" }
+train = { cmd = "python entrenadorModelo.py", cwd = "ml" }
+modelo-estado = { cmd = "python -m scripts.predicciones estado", cwd = "backend" }
+recalcular = { cmd = "python -m scripts.predicciones recalcular", cwd = "backend" }
+cargar-csv = { cmd = "python -m scripts.predicciones cargar", cwd = "backend" }
 
 [dependencies]
 python = ">=3.11,<3.13"

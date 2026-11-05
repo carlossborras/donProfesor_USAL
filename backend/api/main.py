@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 # Cargar .env ANTES de importar los módulos del proyecto: algunos leen la configuración al importarse
 # (p. ej. DATABASE_URL en db/adapter.py o los umbrales de api/dashboards.py).
-_env_path = Path(__file__).resolve().parent.parent / ".env"
+_env_path = Path(__file__).resolve().parents[2] / ".env"  # .env en la raíz del repositorio
 if _env_path.exists():
     for _line in _env_path.read_text(encoding="utf-8").splitlines():
         _line = _line.strip()
@@ -40,8 +40,8 @@ from api.dashboards import router as dashboard_router
 from api.datos import router as datos_router
 from api.predictions import router as predictions_router
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
-FRONTEND_DIR = ROOT_DIR / "web" / "frontend"
+ROOT_DIR = Path(__file__).resolve().parents[2]  # raíz del repositorio
+FRONTEND_DIR = ROOT_DIR / "frontend"
 
 # El secreto JWT, el registro y el login viven en api/security.py y api/auth.py
 
