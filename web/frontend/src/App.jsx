@@ -34,22 +34,22 @@ const ROLE_META = {
 
 const CHAT_PRESETS = {
   docente: [
-    "¿Qué alumnos faltan cuando llueve y viven a más de 3 km?",
-    "¿Cómo influye la cosecha y el apoyo laboral en las entregas?",
-    "¿Cuál es el efecto protector de la beca en mi tutoría?",
-    "¿Qué estudiantes sugiere acompañar con mayor prioridad?",
+    "¿Qué estudiantes viven a más de 3 km o tardan más de 30 minutos en llegar?",
+    "¿Quiénes han aumentado sus faltas del 1.er al 2.º trimestre?",
+    "¿Qué estudiantes trabajan fuera del horario escolar?",
+    "¿Qué estudiantes tienen una nota prevista del 3.er trimestre por debajo de 11?",
   ],
   director: [
-    "¿Cómo se superponen asistencia, lluvia y semanas de cosecha?",
-    "¿Qué grados tienen mayor necesidad de acompañamiento?",
-    "¿Qué grupos tienen menor asistencia en el segundo trimestre?",
-    "¿Qué brecha de conectividad existe entre los grupos?",
+    "¿Qué grados tienen más casos de necesidad de intervención alta?",
+    "¿Cómo es la asistencia media de cada grado?",
+    "¿Qué grados tienen menos internet en casa?",
+    "¿Qué nota media se prevé para el 3.er trimestre en cada grado?",
   ],
   delegado: [
     "¿Qué escuelas rurales tienen menor conectividad?",
     "¿Cómo se distribuye la asistencia entre centros urbanos y rurales?",
-    "¿Dónde priorizar apoyos de transporte escolar según la distancia?",
-    "¿Qué escuelas concentran mayor prioridad de acompañamiento?",
+    "¿Qué escuelas tienen mayor distancia media entre casa y escuela?",
+    "¿Qué escuelas concentran más casos de necesidad de intervención alta?",
   ],
 };
 
@@ -137,7 +137,7 @@ export function App({ session, onLogout }) {
   const [chatHistory, setChatHistory] = useState([
     {
       sender: "assistant",
-      text: "Hola. Soy tu asistente de aula. Puedes preguntarme cualquier duda sobre la asistencia de tus estudiantes, el impacto de las lluvias o cosechas, o recomendaciones de acompañamiento.",
+      text: "Hola. Soy tu asistente de aula. Puedes preguntarme por la asistencia, las notas, las predicciones o el contexto de tus estudiantes. Respondo solo con los datos de tu ámbito.",
       sql: null,
       rowsCount: 0,
       mcpTrace: null,
@@ -805,7 +805,7 @@ export function App({ session, onLogout }) {
                               [
                                 currentPista.defaultDecision,
                                 "Conversación cercana con la familia y entrega de guía impresa",
-                                "Flexibilización de entregas en semanas de lluvia o cosecha",
+                                "Flexibilización temporal de entregas y plazos",
                                 "Reserva de equipamiento sin conexión para refuerzo en aula",
                                 "Refuerzo académico en grupos pequeños y tutoría individual",
                                 "Descartar pista tras contrastar el contexto directo en el aula",
@@ -980,7 +980,7 @@ export function App({ session, onLogout }) {
                   <input
                     type="text"
                     className="chat-text-input"
-                    placeholder="Escribe aquí tu consulta sobre asistencia, cosecha, becas o notas..."
+                    placeholder="Escribe aquí tu consulta sobre asistencia, notas, becas o predicciones..."
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     disabled={chatLoading}

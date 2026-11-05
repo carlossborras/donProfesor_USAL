@@ -147,7 +147,7 @@ function DirectorPanel({ data }) {
         <ChartCard title="Notas medias por grado" subtitle="1.er vs 2.º trimestre · aprobado en 11" empty={sinGrados}>
           <GroupedBarChart categories={c.notas_por_grado?.categorias || []} series={c.notas_por_grado?.series || []} max={20} refLine={data.nota_aprobatoria} refLabel="Aprobado" />
         </ChartCard>
-        <ChartCard title="Faltas medias por grado" subtitle="Un salto en el 2.º trimestre puede coincidir con la cosecha" empty={sinGrados}>
+        <ChartCard title="Faltas medias por grado" subtitle="1.er vs 2.º trimestre" empty={sinGrados}>
           <GroupedBarChart categories={c.faltas_por_grado?.categorias || []} series={c.faltas_por_grado?.series || []} unit=" d" />
         </ChartCard>
         <ChartCard title="Sugerencias de revisión por grado" subtitle="Para coordinar apoyos con cada tutor/a" empty={sinGrados}>
