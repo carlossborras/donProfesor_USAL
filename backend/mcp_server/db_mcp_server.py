@@ -157,6 +157,22 @@ def read_query(rol: str, ambito_id: Any, sql_query: str) -> Dict[str, Any]:
                 "error": f"Operación bloqueada: la palabra clave '{kw}' no está permitida."
             }
 
+    # Tolerancia a sinónimos comunes de columnas en las consultas de lenguaje natural
+    synonyms = {
+        r"\bdistancia_al_centro\b": "distancia_hogar_escuela_km",
+        r"\bdistancia_km\b": "distancia_hogar_escuela_km",
+        r"\bdistancia\b": "distancia_hogar_escuela_km",
+        r"\btiempo_traslado\b": "tiempo_desplazamiento",
+        r"\bhoras_trabajo\b": "horas_trabajo_semanal",
+        r"\btrabajo_semanal\b": "horas_trabajo_semanal",
+        r"\bfaltas\b": "faltas_totales_calculadas",
+        r"\basistencia\b": "asistencia_pct_calculada",
+        r"\bpromedio\b": "promedio_notas_calculado",
+        r"\bnota_media\b": "promedio_notas_calculado",
+    }
+    for pat, rep in synonyms.items():
+        sql_clean = re.sub(pat, rep, sql_clean, flags=re.IGNORECASE)
+
     # Comprobar que solo se consultan las vistas permitidas para ese rol
     all_known_objects = [
         "alumnos_hack4edu",

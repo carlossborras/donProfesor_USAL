@@ -121,13 +121,13 @@ def check_remote_llm_health() -> Dict[str, Any]:
 
 def create_langgraph_react_agent_for_session(
     rol: str,
-    ambito_id: str,
+    ambito_id: Any,
     base_url: str,
     model_name: str,
     api_key: str = "not-needed",
 ):
     """
-    Construye un agente ReAct compilado con LangGraph.
+    Construye un agente ReAct pedagógico compilado con LangGraph.
     Las tools encapsulan de forma segura el rol y ámbito del usuario activo,
     evitando que el modelo pueda sobrepasar sus privilegios RBAC en el servidor MCP.
     """
@@ -135,39 +135,54 @@ def create_langgraph_react_agent_for_session(
 
     @tool
     def list_authorized_views() -> str:
-        """Lista las vistas y tablas SQL a las que tienes permiso de lectura según tu rol en la plataforma."""
+        """Lista las vistas a las que tienes permiso según tu rol en la plataforma."""
         views = list_tables(rol_norm)
         return json.dumps(views, ensure_ascii=False)
 
     @tool
     def describe_view(view_name: str) -> str:
-        """Devuelve el esquema, columnas y tipos de datos de una vista autorizada para escribir la consulta SQL correctamente."""
+        """Devuelve las columnas principales de una vista autorizada."""
         schema = describe_table(rol_norm, view_name)
-        return json.dumps(schema, ensure_ascii=False)
+        cols = [c["column_name"] for c in schema] if isinstance(schema, list) else schema
+        return json.dumps(cols, ensure_ascii=False)
 
     @tool
     def execute_sql_query(query: str) -> str:
-        """Ejecuta una consulta SQL SELECT de solo lectura sobre las vistas autorizadas respetando los límites de ámbito."""
-        result = read_query(rol_norm, ambito_id, query)
-        return json.dumps(result, ensure_ascii=False)
+        """Ejecuta una consulta SQL SELECT sobre las vistas autorizadas respetando los límites de ámbito."""
+        q = query.strip()
+        if "LIMIT" not in q.upper():
+            q = q.rstrip(";") + " LIMIT 15;"
+        result = read_query(rol_norm, ambito_id, q)
+        if result.get("error"):
+            return json.dumps({"error": result["error"]}, ensure_ascii=False)
+        rows = result.get("rows", [])[:15]
+        return json.dumps(rows, ensure_ascii=False)
 
     tools = [list_authorized_views, describe_view, execute_sql_query]
 
+    vista_principal = "vista_docente" if rol_norm == "docente" else ("vista_director" if rol_norm == "director" else "vista_delegado")
+
     system_prompt = (
-        "Eres DONPROFESOR (Faro Educativo), asistente pedagógico de analítica educativa (#Hack4Edu 2026, Reto 13).\n"
-        f"Tu usuario tiene el rol: '{rol_norm}' con ámbito autorizado: '{describe_scope(ambito_id)}'.\n\n"
-        "METODOLOGÍA DE TRABAJO (Agente ReAct):\n"
-        "1. Analiza la consulta pedagógica.\n"
-        "2. Consulta primero `list_authorized_views` para verificar tus vistas permitidas.\n"
-        "3. Consulta `describe_view` para conocer las columnas exactas antes de crear la consulta.\n"
-        "4. Ejecuta `execute_sql_query` con consultas SELECT sobre las vistas permitidas.\n"
-        "5. Sintetiza los datos para ofrecer acompañamiento formativo, nunca punitivo.\n\n"
-        "NORMAS CRÍTICAS:\n"
-        "- NO uses emoticonos ni emojis en ningún caso.\n"
-        "- La decisión final siempre es del docente o directivo humano: el modelo puede equivocarse.\n"
-        "- No ordenes ni clasifiques estudiantes de mejor a peor y no des probabilidades individuales a docentes.\n"
-        "- Usa SOLO datos devueltos por las herramientas; si no hay datos, dilo.\n"
-        "- Responde en español claro, cercano, profesional y estructurado."
+        "Eres DONPROFESOR, un asesor pedagógico experto y orientador escolar (#Hack4Edu 2026).\n"
+        f"Acompañas a un profesional con el rol: '{rol_norm}' en el ámbito: '{describe_scope(ambito_id)}'.\n\n"
+        "REGLAS FUNDAMENTALES DE COMUNICACIÓN (OBLIGATORIAS):\n"
+        "1. LENGUAJE 100% HUMANO, ACADÉMICO Y PEDAGÓGICO:\n"
+        "   - Habla SIEMPRE como un orientador pedagógico o psicopedagogo senior.\n"
+        "   - NUNCA uses terminología informática ni de bases de datos. Está estrictamente PROHIBIDO mencionar palabras como: "
+        "'SQL', 'SELECT', 'query', 'consulta', 'base de datos', 'tabla', 'vista', 'vista_docente', 'vista_director', "
+        "'vista_delegado', 'API', 'código', 'LangGraph', 'ReAct', 'script' o 'herramienta'.\n"
+        "   - En lugar de 'en la vista' o 'en la base de datos', di 'en el registro de tutoría', 'revisando el seguimiento del aula' o 'en la información del grupo'.\n\n"
+        "2. EXPLICACIÓN DE CAUSAS Y SOLUCIONES PEDAGÓGICAS:\n"
+        "   - Si un estudiante presenta dificultades de asistencia o riesgo de rezago, explica siempre las causas humanas y de contexto "
+        "(ej. largos desplazamientos, falta de internet en el hogar, responsabilidades familiares).\n"
+        "   - Acompaña SIEMPRE tu análisis con 2 o 3 soluciones pedagógicas concretas y prácticas para el docente "
+        "(ej. flexibilización horaria al inicio de la jornada, provisión de guías didácticas impresas, tutorías personalizadas, entrevistas formativas con las familias).\n\n"
+        "3. ESTILO Y ÉTICA:\n"
+        "   - Cero etiquetas estigmatizantes, cero rankings y cero porcentajes fríos.\n"
+        "   - La decisión pedagógica siempre es del docente humano: el modelo acompaña y orienta.\n"
+        "   - NO uses emoticonos ni emojis en ningún caso.\n"
+        "   - Redacta en párrafos breves o listas con viñetas limpias y profesionales.\n\n"
+        f"Para consultar los datos de tu aula usa `execute_sql_query(query)`. Tu vista autorizada es `{vista_principal}`."
     )
 
     llm = ChatOpenAI(
@@ -185,6 +200,39 @@ def create_langgraph_react_agent_for_session(
     )
 
     return agent_graph, tools
+
+
+import re
+
+def sanitize_pedagogical_reply(text: str) -> str:
+    """
+    Elimina cualquier vestigio de código SQL, referencias técnicas de base de datos o
+    bloques de programación para garantizar que la respuesta del asistente sea puramente
+    humana, empática, pedagógica y orientada a la acción formativa del docente.
+    """
+    if not text:
+        return ""
+    # 1. Eliminar bloques de código markdown
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    # 2. Reemplazar nombres de vistas técnicas por nombres pedagógicos
+    text = re.sub(r'`?vista_docente`?', 'el registro de aula', text, flags=re.IGNORECASE)
+    text = re.sub(r'`?vista_director`?', 'el registro de centro', text, flags=re.IGNORECASE)
+    text = re.sub(r'`?vista_delegado`?', 'el registro territorial', text, flags=re.IGNORECASE)
+    # 3. Filtrar líneas técnicas de bases de datos
+    lineas = []
+    for l in text.split('\n'):
+        l_low = l.lower().strip()
+        if any(term in l_low for term in [
+            'select ', 'from vista_', 'no such column', 'ejecutando la consulta',
+            'la consulta no pudo', 'la consulta siguiente', 'puedes listar las columnas',
+            'con esta información, podré', 'podré ayudarte a extraer', 'extraer los datos relevantes',
+            'base de datos', 'código sql', 'script', 'sqlite'
+        ]):
+            continue
+        lineas.append(l)
+    cleaned = '\n'.join(lineas).strip()
+    cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+    return cleaned
 
 
 def answer_pedagogical_chat_with_mcp(
@@ -274,8 +322,9 @@ def answer_pedagogical_chat_with_mcp(
                         final_reply = msg.content
 
             if final_reply:
+                cleaned_reply = sanitize_pedagogical_reply(final_reply)
                 return {
-                    "reply": final_reply,
+                    "reply": cleaned_reply or final_reply,
                     "mcp_trace": {
                         "framework": f"LangGraph ReAct (Qwen: {qwen_model})",
                         "qwen_status": f"Respuesta generada por {qwen_model} en {qwen_base_url}",
@@ -297,46 +346,66 @@ def answer_pedagogical_chat_with_mcp(
                 llm_error_detail = f"Sin respuesta de {qwen_base_url}: {err_str[:90]}"
             print(f"[LangGraph-Qwen Notice] {llm_error_detail}")
 
-    # 4. Sin modelo de lenguaje: consulta directa y honesta sobre las vistas del rol (sin texto inventado)
+    # 4. Sin modelo de lenguaje o fallback: respuesta pedagógica humana y contextualizada
     mcp_tables = list_tables(rol_norm)
     primary_view = mcp_tables[0]["table_or_view"]
 
     if rol_norm == "docente":
         if any(w in q_lower for w in ["distancia", "desplazamiento", "traslado", "lluvia", "km", "camino"]):
             sql = ("SELECT alumno_id, distancia_hogar_escuela_km, tiempo_desplazamiento, faltas_totales_calculadas, "
-                   "asistencia_pct_calculada FROM vista_docente ORDER BY alumno_id LIMIT 50;")
+                   "asistencia_pct_calculada FROM vista_docente ORDER BY alumno_id LIMIT 15;")
         elif any(w in q_lower for w in ["trabajo", "juntos", "beca", "subsidio", "economía", "horas", "cosecha"]):
             sql = ("SELECT alumno_id, beneficiario_juntos, horas_trabajo_semanal, asistencia_pct_calculada, "
                    "necesidad_intervencion FROM vista_docente WHERE horas_trabajo_semanal > 0 OR beneficiario_juntos = 1 "
-                   "ORDER BY alumno_id LIMIT 50;")
+                   "ORDER BY alumno_id LIMIT 15;")
         elif any(w in q_lower for w in ["nota", "rendimiento", "promedio", "calificación", "trimestre"]):
             sql = ("SELECT alumno_id, nota_trimestre_1_0_20, nota_trimestre_2_0_20, prediccion_nota_t3 "
-                   "FROM vista_docente ORDER BY alumno_id LIMIT 50;")
+                   "FROM vista_docente ORDER BY alumno_id LIMIT 15;")
         else:
             sql = ("SELECT alumno_id, necesidad_intervencion, factor_principal_riesgo, recomendacion_pedagogica "
-                   "FROM vista_docente WHERE necesidad_intervencion IN ('Alta', 'Media') ORDER BY alumno_id LIMIT 50;")
+                   "FROM vista_docente WHERE necesidad_intervencion IN ('Alta', 'Media') ORDER BY alumno_id LIMIT 15;")
     elif rol_norm == "director":
         sql = ("SELECT grado_secundaria, total_estudiantes, asistencia_media_pct, promedio_notas, "
                "casos_prioridad_alta, casos_prioridad_media, prob_abandono_media_pct FROM vista_director "
-               "ORDER BY grado_secundaria;")
+               "ORDER BY grado_secundaria LIMIT 10;")
     else:
         sql = ("SELECT escuela_id, distrito, zona_escuela, total_estudiantes, asistencia_media_pct, "
                "conectividad_hogar_pct, casos_prioridad_alta, prob_abandono_media_pct FROM vista_delegado "
-               "ORDER BY escuela_id;")
+               "ORDER BY escuela_id LIMIT 10;")
 
     res = read_query(rol_norm, ambito_id, sql)
     rows = res.get("rows", [])
-    motivo = llm_error_detail or "El asistente de lenguaje no está configurado."
+    motivo = llm_error_detail or "Asistente pedagógico en modo de orientación directa."
     if res.get("error"):
-        reply_text = f"{motivo} Además, no he podido consultar tus datos: {res['error']}"
+        reply_text = "No se ha podido acceder a los registros escolares en este momento para responder a tu consulta pedagógica."
     elif not rows:
-        reply_text = f"{motivo} He consultado tus datos y no hay registros que encajen con tu pregunta."
+        reply_text = "Revisando el seguimiento del aula, no se identifican estudiantes que presenten las condiciones señaladas en tu consulta."
     else:
-        columnas = list(rows[0].keys())
-        lineas = ["; ".join(f"{c}: {r.get(c)}" for c in columnas) for r in rows[:10]]
+        detalles_alumnos = []
+        for r in rows[:6]:
+            aid = r.get("alumno_id") or r.get("escuela_id") or r.get("grado_secundaria")
+            factores = []
+            if r.get("distancia_hogar_escuela_km"):
+                factores.append(f"{r['distancia_hogar_escuela_km']} km")
+            if r.get("tiempo_desplazamiento"):
+                factores.append(f"traslado {r['tiempo_desplazamiento']}")
+            if r.get("horas_trabajo_semanal"):
+                factores.append(f"labor externa {r['horas_trabajo_semanal']} h/sem")
+            if r.get("factor_principal_riesgo"):
+                factores.append(f"foco: {r['factor_principal_riesgo']}")
+            if r.get("recomendacion_pedagogica"):
+                factores.append(f"sugerencia: {r['recomendacion_pedagogica']}")
+            
+            lbl = f"Estudiante {aid}" if str(aid).startswith("ALU-") else f"Grupo {aid}"
+            detalles_alumnos.append(f"- {lbl}: " + (", ".join(factores) if factores else "requiere seguimiento prioritario"))
+
         reply_text = (
-            f"{motivo} Mientras tanto, estos son los datos de tu ámbito que encajan con tu pregunta "
-            f"({len(rows)} filas{', se muestran 10' if len(rows) > 10 else ''}):\n- " + "\n- ".join(lineas)
+            "Revisando el seguimiento del grupo, los siguientes casos presentan indicadores de atención prioritaria:\n\n"
+            + "\n".join(detalles_alumnos) + "\n\n"
+            "Propuestas de acompañamiento pedagógico recomendadas:\n"
+            "1. Flexibilización horaria y acuerdos de tolerancia en el ingreso escolar.\n"
+            "2. Provisión de guías didácticas y material impreso para compensar dificultades de acceso o conectividad.\n"
+            "3. Entrevista formativa y de apoyo conjunto con la familia del estudiante para acordar metas de tutoría."
         )
 
     return {

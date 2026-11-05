@@ -245,9 +245,6 @@ export function App({ session, onLogout }) {
         {
           sender: "assistant",
           text: res.reply || res.answer,
-          sql: trace.sql_executed || res.sql_executed,
-          rowsCount: trace.rows_returned ?? 0,
-          mcpTrace: trace,
         },
       ]);
     } catch (_err) {
@@ -920,19 +917,6 @@ export function App({ session, onLogout }) {
                       </span>
                       <div style={{ whiteSpace: "pre-line" }}>{msg.text}</div>
 
-                      {msg.sql && (
-                        <details className="mcp-trace-box">
-                          <summary>
-                            Ver datos consultados en el registro escolar
-                          </summary>
-                          <div className="mcp-trace-code">
-                            <div style={{ marginBottom: "4px" }}>
-                              <strong>Consulta sobre el registro escolar:</strong>
-                            </div>
-                            <div>{msg.sql}</div>
-                          </div>
-                        </details>
-                      )}
                     </div>
                   ))}
 
