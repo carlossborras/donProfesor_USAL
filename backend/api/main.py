@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 from fastapi import FastAPI, Depends, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -317,3 +317,26 @@ def serve_donprofesor_react_app() -> HTMLResponse:
         return HTMLResponse(content=dist_index.read_text(encoding="utf-8"))
     react_index = FRONTEND_DIR / "index.html"
     return HTMLResponse(content=react_index.read_text(encoding="utf-8"))
+
+
+@app.get("/{full_path:path}")
+def serve_static_or_spa(full_path: str):
+    # Ignorar rutas que correspondan a la API
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Endpoint no encontrado")
+    
+    # 1. Comprobar si existe en dist/ (favicon, imágenes, robots, etc.)
+    dist_file = FRONTEND_DIR / "dist" / full_path
+    if dist_file.is_file():
+        return FileResponse(dist_file)
+    
+    # 2. Comprobar en public/
+    pub_file = FRONTEND_DIR / "public" / full_path
+    if pub_file.is_file():
+        return FileResponse(pub_file)
+    
+    # 3. Fallback a la SPA para rutas de frontend
+    dist_index = FRONTEND_DIR / "dist" / "index.html"
+    if dist_index.exists():
+        return HTMLResponse(content=dist_index.read_text(encoding="utf-8"))
+    return HTMLResponse(content=(FRONTEND_DIR / "index.html").read_text(encoding="utf-8"))

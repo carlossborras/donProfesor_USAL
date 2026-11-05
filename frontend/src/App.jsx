@@ -1,3 +1,4 @@
+import logoLibro from "./assets/logo_libro_sin_fondo.png";
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   fetchDashboardPanel,
@@ -27,7 +28,7 @@ const ROLE_META = {
   },
   delegado: {
     label: "Delegado",
-    scopeTitle: "Red territorial UGEL",
+    scopeTitle: "Red territorial educativa",
     heroSubtitle: "Focos territoriales para orientar recursos de transporte, becas y conectividad.",
   },
 };
@@ -338,48 +339,15 @@ export function App({ session, onLogout }) {
       <aside className="edusight-sidebar" aria-label="Navegación principal">
         <div>
           <div className="edusight-brand">
-            {/* Icono vectorial del Faro Educativo (fiel al diseño de Figma) */}
-            <svg
-              width="34"
-              height="38"
-              viewBox="0 0 34 38"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-            >
-              <path
-                d="M13 13H21L23 34H11L13 13Z"
-                stroke="#1F6351"
-                strokeWidth="1.7"
-                strokeLinejoin="round"
-              />
-              <path d="M9 34H25" stroke="#1F6351" strokeWidth="1.7" strokeLinecap="round" />
-              <rect
-                x="14"
-                y="7"
-                width="6"
-                height="6"
-                stroke="#1F6351"
-                strokeWidth="1.6"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M12 7L17 3L22 7"
-                stroke="#1F6351"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path d="M4 10L9 10" stroke="#1F6351" strokeWidth="1.6" strokeLinecap="round" />
-              <path d="M25 10L30 10" stroke="#1F6351" strokeWidth="1.6" strokeLinecap="round" />
-              <path d="M5.5 5.5L9.5 7.5" stroke="#1F6351" strokeWidth="1.5" strokeLinecap="round" />
-              <path d="M28.5 5.5L24.5 7.5" stroke="#1F6351" strokeWidth="1.5" strokeLinecap="round" />
-              <path d="M12.2 21H21.8" stroke="#1F6351" strokeWidth="1.4" />
-              <path d="M11.6 28H22.4" stroke="#1F6351" strokeWidth="1.4" />
-            </svg>
+            {/* Isotipo digital del libro inteligente DonProfesor */}
+            <img
+              src={logoLibro}
+              alt="DonProfesor"
+              className="edusight-brand-logo"
+            />
             <div>
               <div className="edusight-brand-name">DONPROFESOR</div>
-              <div className="edusight-brand-sub">FARO EDUCATIVO</div>
+              <div className="edusight-brand-sub">AGENTE EDUCATIVO</div>
             </div>
           </div>
 
@@ -451,7 +419,7 @@ export function App({ session, onLogout }) {
             para enseñar.
           </div>
           <div className="edusight-motto-sub">
-            {user?.ugel || user?.escuela_id || ""}
+            {user?.escuela_id ? `Centro escolar: ${user.escuela_id}` : "Entorno activo"}
             <br />
             Un apoyo para tu día a día.
           </div>
@@ -1126,7 +1094,7 @@ export function App({ session, onLogout }) {
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <h3>Sobre DONPROFESOR (#Hack4Edu 2026)</h3>
             <p style={{ fontSize: "13.5px", color: "#4e5d55", marginTop: "8px" }}>
-              Esta plataforma acompaña a docentes, equipos directivos y coordinadores de UGEL sin sustituir nunca el juicio profesional humano ni etiquetar a los estudiantes.
+              Esta plataforma acompaña a docentes, equipos directivos y coordinadores territoriales sin sustituir nunca el juicio profesional humano ni etiquetar a los estudiantes.
             </p>
 
             <div
