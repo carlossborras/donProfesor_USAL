@@ -24,6 +24,60 @@ def get_sqlite_connection() -> sqlite3.Connection:
     return conn
 
 
+_COLUMNAS_OBLIGATORIAS = {"alumno_id", "escuela_id", "grado_secundaria"}
+_inicializada: set = set()
+
+
+def _definicion_alumnos() -> str:
+    texto = SCHEMA_SQL.read_text(encoding="utf-8")
+    inicio = texto.index("CREATE TABLE IF NOT EXISTS alumnos_hack4edu")
+    return texto[inicio: texto.index(");", inicio) + 2]
+
+
+def _migrar_tabla_alumnos(conn: sqlite3.Connection) -> None:
+    """Lleva una tabla `alumnos_hack4edu` antigua al esquema actual sin perder datos.
+
+    - Añade las columnas nuevas (salidas del modelo, fecha de alta...).
+    - Si quedan restricciones NOT NULL en variables que pueden faltar (p. ej. notas de un alumno recién
+      matriculado), reconstruye la tabla copiando los datos.
+    """
+    cur = conn.cursor()
+    info = cur.execute("PRAGMA table_info(alumnos_hack4edu);").fetchall()
+    actuales = {fila[1]: fila for fila in info}
+    nuevo = sqlite3.connect(":memory:")
+    nuevo.execute(_definicion_alumnos())
+    esperadas = [fila[1] for fila in nuevo.execute("PRAGMA table_info(alumnos_hack4edu);").fetchall()]
+    nuevo.close()
+
+    sobran_not_null = [c for c, fila in actuales.items() if fila[3] and c not in _COLUMNAS_OBLIGATORIAS and fila[5] == 0]
+    if sobran_not_null:
+        comunes = [c for c in esperadas if c in actuales]
+        lista = ", ".join(comunes)
+        cur.executescript(
+            "DROP VIEW IF EXISTS vista_docente; DROP VIEW IF EXISTS vista_director; "
+            "DROP VIEW IF EXISTS vista_delegado; DROP VIEW IF EXISTS vista_avisos_predictivos; "
+            "ALTER TABLE alumnos_hack4edu RENAME TO alumnos_hack4edu_antigua;"
+        )
+        cur.execute(_definicion_alumnos())
+        cur.execute(f"INSERT INTO alumnos_hack4edu ({lista}) SELECT {lista} FROM alumnos_hack4edu_antigua;")
+        cur.execute("DROP TABLE alumnos_hack4edu_antigua;")
+        conn.commit()
+        return
+
+    for columna in esperadas:
+        if columna not in actuales:
+            cur.execute(f"ALTER TABLE alumnos_hack4edu ADD COLUMN {columna};")
+    conn.commit()
+
+
+def ensure_database() -> None:
+    """Inicializa la base de datos una sola vez por proceso (evita repetirlo en cada consulta)."""
+    clave = str(SQLITE_PATH)
+    if clave not in _inicializada or not SQLITE_PATH.exists():
+        init_and_seed_database(force_reset=False)
+        _inicializada.add(clave)
+
+
 def init_and_seed_database(force_reset: bool = False) -> None:
     """
     Inicializa la base de datos con la estructura de 37 variables y usuarios de autenticación.
@@ -41,11 +95,8 @@ def init_and_seed_database(force_reset: bool = False) -> None:
     # Ejecutar esquema de tablas y vistas
     cur.executescript(SCHEMA_SQL.read_text(encoding="utf-8"))
 
-    # Migración idempotente para la columna docente_tutor si la tabla ya existía
-    try:
-        cur.execute("ALTER TABLE alumnos_hack4edu ADD COLUMN docente_tutor VARCHAR(60);")
-    except Exception:
-        pass
+    # Migración idempotente: bases de datos creadas con el esquema anterior
+    _migrar_tabla_alumnos(conn)
 
     cur.executescript(VIEWS_SQL.read_text(encoding="utf-8"))
 
@@ -84,6 +135,10 @@ def init_and_seed_database(force_reset: bool = False) -> None:
             "Especialista de Gestión Pedagógica · UGEL-01-NORTE",
         ),
     ]
+
+    # En un despliegue público conviene desactivarlos: DONPROFESOR_CREAR_USUARIOS_DEMO=0
+    if os.environ.get("DONPROFESOR_CREAR_USUARIOS_DEMO", "1").strip().lower() in ("0", "false", "no"):
+        usuarios_demo = []
 
     cur.executemany(
         """

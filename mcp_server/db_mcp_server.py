@@ -2,9 +2,13 @@
 DONPROFESOR (#Hack4Edu 2026, Reto 13) · Servidor MCP de Base de Datos Real (Persona 3).
 Conecta el modelo de lenguaje (LLM) del Chat con la Base de Datos real mediante Model Context Protocol,
 respetando estrictamente los permisos por rol sobre las vistas de seguridad:
-- Rol 'docente'   -> solo puede consultar vista_docente y vista_avisos_predictivos.
-- Rol 'director'  -> solo puede consultar vista_director y vista_avisos_predictivos de su escuela.
-- Rol 'delegado'  -> solo puede consultar vista_delegado y vista_avisos_predictivos a nivel territorial.
+- Rol 'docente'   -> solo vista_docente, filtrada a SU grupo (escuela + grado).
+- Rol 'director'  -> solo vista_director (agregada, k >= 5), filtrada a SU escuela.
+- Rol 'delegado'  -> solo vista_delegado (agregada, k >= 5), filtrada a SU UGEL.
+
+El filtro de ámbito se aplica en la propia base de datos: antes de ejecutar la consulta se crean vistas
+TEMPORALES con el mismo nombre y el filtro del usuario, de modo que aunque el modelo de lenguaje escriba
+cualquier SELECT, solo puede leer filas de su ámbito.
 
 Expone las 3 herramientas estándar de Base de Datos en MCP:
 1. list_tables(rol)
@@ -16,17 +20,40 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Any
 from mcp.server.mcpserver import MCPServer
-from db.seed_db import init_and_seed_database
+from db.seed_db import init_and_seed_database, ensure_database, get_sqlite_connection
 from db.adapter import db_adapter
 
 mcp = MCPServer("donprofesor-db-mcp")
 
 # Mapa estricto de control de acceso basado en rol (RBAC / GRANT SELECT por vista)
 ROLE_ALLOWED_VIEWS: Dict[str, List[str]] = {
-    "docente": ["vista_docente", "vista_avisos_predictivos"],
-    "director": ["vista_director", "vista_avisos_predictivos"],
-    "delegado": ["vista_delegado", "vista_avisos_predictivos"],
+    "docente": ["vista_docente"],
+    "director": ["vista_director"],
+    "delegado": ["vista_delegado"],
 }
+
+# Columna de cada vista sobre la que se aplica el ámbito
+_FILTRO_VISTA = {
+    "vista_docente": ("docente", "UPPER(TRIM(escuela_id)) = UPPER(TRIM({escuela})) AND grado_secundaria = {grado}"),
+    "vista_director": ("director", "UPPER(TRIM(escuela_id)) = UPPER(TRIM({escuela}))"),
+    "vista_delegado": ("delegado", "UPPER(TRIM(ugel)) = UPPER(TRIM({ugel}))"),
+}
+
+
+def _literal(valor: Any) -> str:
+    """Literal SQL seguro para SQLite (solo se usa con datos del token, nunca con texto del usuario)."""
+    if valor is None:
+        return "NULL"
+    if isinstance(valor, (int, float)):
+        return str(int(valor)) if float(valor).is_integer() else str(float(valor))
+    return "'" + str(valor).replace("'", "''") + "'"
+
+
+def describe_scope(scope: Any) -> str:
+    if isinstance(scope, dict):
+        partes = [f"{k}={scope.get(k)}" for k in ("escuela_id", "grado_secundaria", "ugel") if scope.get(k)]
+        return ", ".join(partes) or "sin ámbito"
+    return str(scope)
 
 VIEW_DESCRIPTIONS: Dict[str, str] = {
     "vista_docente": (
@@ -35,13 +62,14 @@ VIEW_DESCRIPTIONS: Dict[str, str] = {
         "beneficiario_juntos, horas_trabajo_semanal, internet_hogar, tiempo_estudio_semanal, "
         "faltas_trimestre_1, faltas_trimestre_2, faltas_totales_calculadas, asistencia_pct_calculada, "
         "nota_trimestre_1_0_20, nota_trimestre_2_0_20, promedio_notas_calculado, "
-        "prediccion_nota_t3, prediccion_faltas_t3, prob_perdida_beca_pct, prob_repeticion_pct, "
-        "prob_abandono_pct, necesidad_intervencion, indice_desanimo, factor_principal_riesgo, recomendacion_pedagogica."
+        "prediccion_nota_t1, prediccion_nota_t2, prediccion_nota_t3, prediccion_faltas_t1, prediccion_faltas_t2, "
+        "prediccion_faltas_t3, necesidad_intervencion, indice_desanimo (0-10), factor_principal_riesgo, recomendacion_pedagogica. "
+        "Sin probabilidades individuales."
     ),
     "vista_director": (
         "Indicadores agregados por grado y centro educativo: "
         "escuela_id, grado_secundaria, total_estudiantes, asistencia_media_pct, promedio_notas, "
-        "conectividad_hogar_pct, horas_estudio_media, total_beneficiarios_juntos, "
+        "conectividad_hogar_pct, nota_t3_prevista_media, total_beneficiarios_juntos, "
         "casos_prioridad_alta, casos_prioridad_media, casos_prioridad_baja, prob_abandono_media_pct, indice_desanimo_medio."
     ),
     "vista_delegado": (
@@ -107,7 +135,7 @@ def describe_table(rol: str, table_name: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def read_query(rol: str, ambito_id: str, sql_query: str) -> Dict[str, Any]:
+def read_query(rol: str, ambito_id: Any, sql_query: str) -> Dict[str, Any]:
     """
     Ejecuta una consulta SQL SELECT de solo lectura sobre las vistas autorizadas para el rol en la base de datos real.
     Bloquea cualquier instrucción que no sea SELECT o que intente acceder a tablas no autorizadas.
@@ -148,17 +176,39 @@ def read_query(rol: str, ambito_id: str, sql_query: str) -> Dict[str, Any]:
                 )
             }
 
+    if re.search(r"\b(main|temp|sqlite_\w+)\b", sql_clean.lower()):
+        return {"error": "Operación bloqueada: no se permiten referencias a esquemas internos de la base de datos."}
+    if not isinstance(ambito_id, dict):
+        return {"error": "Falta el ámbito de la sesión: no se puede ejecutar la consulta."}
+    if db_adapter.mode != "PROVISIONAL_SQLITE_SEED":
+        return {"error": "Las consultas del asistente solo están disponibles con la base de datos local."}
+
+    ensure_database()
+    conn = get_sqlite_connection()
     try:
-        rows = db_adapter.fetch_all(sql_clean)
+        for vista in allowed:
+            rol_vista, plantilla = _FILTRO_VISTA[vista]
+            if rol_vista != rol_norm:
+                continue
+            filtro = plantilla.format(
+                escuela=_literal(ambito_id.get("escuela_id")),
+                grado=_literal(int(ambito_id.get("grado_secundaria") or 0)),
+                ugel=_literal(ambito_id.get("ugel")),
+            )
+            conn.execute(f"CREATE TEMP VIEW {vista} AS SELECT * FROM main.{vista} WHERE {filtro};")
+        cursor = conn.execute(sql_clean)
+        rows = [dict(r) for r in cursor.fetchmany(50)]
         return {
             "executed_sql": sql_clean,
             "db_role": f"role_{rol_norm}",
-            "ambito_id": ambito_id,
+            "ambito_id": describe_scope(ambito_id),
             "row_count": len(rows),
-            "rows": rows[:50],
+            "rows": rows,
         }
     except Exception as exc:
-        return {"error": f"Error al ejecutar consulta en vista SQL real: {exc}"}
+        return {"error": f"Error al ejecutar la consulta: {exc}"}
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

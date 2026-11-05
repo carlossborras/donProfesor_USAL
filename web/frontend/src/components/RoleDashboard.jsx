@@ -106,7 +106,7 @@ function DocentePanel({ data }) {
                 <tr key={a.alumno_id}>
                   <td className="mono">{a.alumno_id}</td>
                   <td>{formatValue(a.asistencia_pct, " %")}</td>
-                  <td>{a.faltas_t1} → {a.faltas_t2}</td>
+                  <td>{formatValue(a.faltas_t1, "", 0)} → {formatValue(a.faltas_t2, "", 0)}</td>
                   <td>{formatValue(a.nota_t1)} → {formatValue(a.nota_t2)}</td>
                   <td>{formatValue(a.promedio)}</td>
                   <td>{a.sugerir_revision ? <span className="tag-review">Sugerir revisión</span> : <span className="muted">—</span>}</td>
@@ -147,7 +147,7 @@ function DirectorPanel({ data }) {
         <ChartCard title="Notas medias por grado" subtitle="1.er vs 2.º trimestre · aprobado en 11" empty={sinGrados}>
           <GroupedBarChart categories={c.notas_por_grado?.categorias || []} series={c.notas_por_grado?.series || []} max={20} refLine={data.nota_aprobatoria} refLabel="Aprobado" />
         </ChartCard>
-        <ChartCard title="Faltas medias por grado" subtitle="Un salto en el 2.º trimestre puede coincidir con la cosecha" empty={sinGrados}>
+        <ChartCard title="Faltas medias por grado" subtitle="1.er vs 2.º trimestre" empty={sinGrados}>
           <GroupedBarChart categories={c.faltas_por_grado?.categorias || []} series={c.faltas_por_grado?.series || []} unit=" d" />
         </ChartCard>
         <ChartCard title="Sugerencias de revisión por grado" subtitle="Para coordinar apoyos con cada tutor/a" empty={sinGrados}>

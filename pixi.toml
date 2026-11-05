@@ -10,8 +10,9 @@ build = "npm --prefix web/frontend run build"
 start = { cmd = "python web/app.py", depends-on = ["build"] }
 test = "pytest -v"
 seed = "python -m db.seed_db"
-train = "python -m model.train_predict --train"
-predict = "python -m model.train_predict"
+train = "python entrenadorModelo.py"
+modelo-estado = "python -m scripts.predicciones estado"
+recalcular = "python -m scripts.predicciones recalcular"
 
 [dependencies]
 python = ">=3.11,<3.13"
@@ -28,7 +29,9 @@ python-multipart = ">=0.0.33,<0.0.34"
 pandas = ">=3.1.0,<4"
 numpy = ">=2.5.4,<3"
 plotly = ">=7.1.0,<8"
-scikit-learn = ">=1.5.0,<2"
+scikit-learn = "==1.6.1"
+lightgbm = ">=4.3.0,<5"
+joblib = ">=1.3.0"
 
 [pypi-dependencies]
 psycopg2-binary = ">=2.9.10"

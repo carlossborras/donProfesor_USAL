@@ -1,7 +1,6 @@
 """
 DONPROFESOR (#Hack4Edu 2026, Reto 13) · Agente ReAct implementado con LangGraph.
-Conecta con el servidor vLLM/Qwen del equipo (por defecto http://172.25.144.238:8001/v1,
-modelo `donprofesor-llm`) y utiliza las herramientas de base de datos MCP
+Conecta con el servidor vLLM/Qwen configurado en .env (QWEN_BASE_URL, QWEN_MODEL_NAME, QWEN_API_KEY) y utiliza las herramientas de base de datos MCP
 (`list_tables`, `describe_table`, `read_query`) para responder consultas pedagógicas
 con supervisión humana y cero emoticonos.
 """
@@ -10,14 +9,14 @@ from __future__ import annotations
 import os
 import json
 import httpx
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
-from mcp_server.db_mcp_server import list_tables, describe_table, read_query
+from mcp_server.db_mcp_server import list_tables, describe_table, read_query, describe_scope
 
 
 FORBIDDEN_TERMS = [
@@ -34,7 +33,7 @@ def get_llm_config() -> Dict[str, str]:
     raw_url = (
         os.environ.get("QWEN_BASE_URL")
         or os.environ.get("LLM_BASE_URL")
-        or "http://172.25.144.238:8001/v1"
+        or ""
     ).strip()
     if raw_url:
         raw_url = raw_url.rstrip("/")
@@ -43,7 +42,7 @@ def get_llm_config() -> Dict[str, str]:
         else:
             base_url = raw_url
     else:
-        base_url = "http://172.25.144.238:8001/v1"
+        base_url = ""
 
     model_name = (
         os.environ.get("QWEN_MODEL_NAME")
@@ -67,6 +66,9 @@ def get_llm_config() -> Dict[str, str]:
 def check_remote_llm_health() -> Dict[str, Any]:
     cfg = get_llm_config()
     base_url = cfg["base_url"]
+    if not base_url:
+        return {"reachable": False, "authenticated": False, "status": "sin_configurar", "base_url": None,
+                "model_name": cfg["model_name"], "detail": "El asistente de lenguaje no está configurado (QWEN_BASE_URL)."}
     root_url = base_url[:-3] if base_url.endswith("/v1") else base_url
     headers = {"Authorization": f"Bearer {cfg['api_key']}"}
     try:
@@ -153,7 +155,7 @@ def create_langgraph_react_agent_for_session(
 
     system_prompt = (
         "Eres DONPROFESOR (EduSight · Faro Educativo), asistente pedagógico de analítica educativa (#Hack4Edu 2026, Reto 13).\n"
-        f"Tu usuario tiene el rol: '{rol_norm}' con ámbito autorizado: '{ambito_id}'.\n\n"
+        f"Tu usuario tiene el rol: '{rol_norm}' con ámbito autorizado: '{describe_scope(ambito_id)}'.\n\n"
         "METODOLOGÍA DE TRABAJO (Agente ReAct):\n"
         "1. Analiza la consulta pedagógica.\n"
         "2. Consulta primero `list_authorized_views` para verificar tus vistas permitidas.\n"
@@ -163,6 +165,8 @@ def create_langgraph_react_agent_for_session(
         "NORMAS CRÍTICAS:\n"
         "- NO uses emoticonos ni emojis en ningún caso.\n"
         "- La decisión final siempre es del docente o directivo humano: el modelo puede equivocarse.\n"
+        "- No ordenes ni clasifiques estudiantes de mejor a peor y no des probabilidades individuales a docentes.\n"
+        "- Usa SOLO datos devueltos por las herramientas; si no hay datos, dilo.\n"
         "- Responde en español claro, cercano, profesional y estructurado."
     )
 
@@ -171,7 +175,7 @@ def create_langgraph_react_agent_for_session(
         api_key=api_key,
         model=model_name,
         temperature=0.1,
-        timeout=6.0,
+        timeout=float(os.environ.get("QWEN_TIMEOUT_SECONDS", "30")),
     )
 
     agent_graph = create_react_agent(
@@ -184,7 +188,7 @@ def create_langgraph_react_agent_for_session(
 
 
 def answer_pedagogical_chat_with_mcp(
-    rol: str, ambito_id: str, question: str
+    rol: str, ambito_id: Any, question: str
 ) -> Dict[str, Any]:
     """
     Orquesta la consulta pedagógica:
@@ -222,8 +226,7 @@ def answer_pedagogical_chat_with_mcp(
         return {
             "reply": (
                 f"El servidor MCP ha rechazado la consulta porque tu sesión actual ({rol_norm}) "
-                "solo cuenta con permisos de lectura (GRANT SELECT) sobre los datos de tu aula "
-                "(`vista_docente` y `vista_avisos_predictivos`)."
+                "solo cuenta con permisos de lectura sobre los datos de tu aula (`vista_docente`)."
             ),
             "mcp_trace": {
                 "framework": "LangGraph ReAct Guardrail",
@@ -241,6 +244,8 @@ def answer_pedagogical_chat_with_mcp(
     qwen_api_key = cfg["api_key"]
     llm_error_detail = None
 
+    if not qwen_base_url:
+        llm_error_detail = "El asistente de lenguaje no está configurado."
     if qwen_base_url:
         try:
             agent_graph, _ = create_langgraph_react_agent_for_session(
@@ -279,7 +284,7 @@ def answer_pedagogical_chat_with_mcp(
                         "tools_called": tools_called or ["list_authorized_views", "execute_sql_query"],
                         "sql_executed": executed_sqls[-1] if executed_sqls else "SELECT vía LangGraph ReAct",
                         "total_reasoning_steps": len(messages),
-                        "rows_returned": 1,
+                        "rows_returned": None,
                     },
                 }
         except Exception as e:
@@ -292,150 +297,58 @@ def answer_pedagogical_chat_with_mcp(
                 llm_error_detail = f"Sin respuesta de {qwen_base_url}: {err_str[:90]}"
             print(f"[LangGraph-Qwen Notice] {llm_error_detail}")
 
-    # 4. Ejecución directa de las herramientas MCP reales sobre la base de datos
+    # 4. Sin modelo de lenguaje: consulta directa y honesta sobre las vistas del rol (sin texto inventado)
     mcp_tables = list_tables(rol_norm)
     primary_view = mcp_tables[0]["table_or_view"]
-    _ = describe_table(rol_norm, primary_view)
 
     if rol_norm == "docente":
-        if any(w in q_lower for w in ["distancia", "desplazamiento", "traslado", "lluvia", "km", "3 km", "3km", "camino"]):
-            sql = (
-                "SELECT alumno_id, distancia_hogar_escuela_km, tiempo_desplazamiento, faltas_totales_calculadas, "
-                "asistencia_pct_calculada, nota_trimestre_2_0_20, beneficiario_juntos "
-                "FROM vista_docente WHERE distancia_hogar_escuela_km >= 3.0 "
-                "ORDER BY faltas_totales_calculadas DESC LIMIT 10;"
-            )
-        elif any(w in q_lower for w in ["trabajo", "juntos", "beca", "subsidio", "economía", "horas", "cosecha", "a-219"]):
-            sql = (
-                "SELECT alumno_id, beneficiario_juntos, horas_trabajo_semanal, prob_perdida_beca_pct, "
-                "asistencia_pct_calculada, promedio_notas_calculado "
-                "FROM vista_docente WHERE horas_trabajo_semanal > 0 OR beneficiario_juntos = 1 "
-                "ORDER BY horas_trabajo_semanal DESC LIMIT 10;"
-            )
-        elif any(w in q_lower for w in ["nota", "rendimiento", "promedio", "calificación", "t3", "trimestre", "bajado", "a-204"]):
-            sql = (
-                "SELECT alumno_id, nota_trimestre_1_0_20, nota_trimestre_2_0_20, promedio_notas_calculado, "
-                "prediccion_nota_t3, prob_repeticion_pct "
-                "FROM vista_docente ORDER BY promedio_notas_calculado ASC LIMIT 10;"
-            )
+        if any(w in q_lower for w in ["distancia", "desplazamiento", "traslado", "lluvia", "km", "camino"]):
+            sql = ("SELECT alumno_id, distancia_hogar_escuela_km, tiempo_desplazamiento, faltas_totales_calculadas, "
+                   "asistencia_pct_calculada FROM vista_docente ORDER BY alumno_id LIMIT 50;")
+        elif any(w in q_lower for w in ["trabajo", "juntos", "beca", "subsidio", "economía", "horas", "cosecha"]):
+            sql = ("SELECT alumno_id, beneficiario_juntos, horas_trabajo_semanal, asistencia_pct_calculada, "
+                   "necesidad_intervencion FROM vista_docente WHERE horas_trabajo_semanal > 0 OR beneficiario_juntos = 1 "
+                   "ORDER BY alumno_id LIMIT 50;")
+        elif any(w in q_lower for w in ["nota", "rendimiento", "promedio", "calificación", "trimestre"]):
+            sql = ("SELECT alumno_id, nota_trimestre_1_0_20, nota_trimestre_2_0_20, prediccion_nota_t3 "
+                   "FROM vista_docente ORDER BY alumno_id LIMIT 50;")
         else:
-            sql = (
-                "SELECT alumno_id, necesidad_intervencion, prob_abandono_pct, prediccion_nota_t3, "
-                "factor_principal_riesgo, recomendacion_pedagogica "
-                "FROM vista_avisos_predictivos LIMIT 10;"
-            )
-
+            sql = ("SELECT alumno_id, necesidad_intervencion, factor_principal_riesgo, recomendacion_pedagogica "
+                   "FROM vista_docente WHERE necesidad_intervencion IN ('Alta', 'Media') ORDER BY alumno_id LIMIT 50;")
     elif rol_norm == "director":
-        if any(w in q_lower for w in ["grado", "grupo", "sección", "comparativa", "aula"]):
-            sql = (
-                "SELECT escuela_id, grado_secundaria, total_estudiantes, asistencia_media_pct, "
-                "promedio_notas, conectividad_hogar_pct, casos_prioridad_alta "
-                "FROM vista_director ORDER BY grado_secundaria ASC;"
-            )
-        else:
-            sql = (
-                "SELECT escuela_id, grado_secundaria, total_estudiantes, asistencia_media_pct, "
-                "promedio_notas, prob_abandono_media_pct, total_beneficiarios_juntos "
-                "FROM vista_director ORDER BY casos_prioridad_alta DESC;"
-            )
-
-    else:  # DELEGADO / UGEL
-        if any(w in q_lower for w in ["rural", "urbana", "zona", "brecha"]):
-            sql = (
-                "SELECT ugel, distrito, escuela_id, zona_escuela, total_estudiantes, "
-                "asistencia_media_pct, promedio_notas, conectividad_hogar_pct "
-                "FROM vista_delegado ORDER BY zona_escuela ASC, asistencia_media_pct ASC;"
-            )
-        else:
-            sql = (
-                "SELECT ugel, distrito, escuela_id, zona_escuela, total_estudiantes, "
-                "asistencia_media_pct, promedio_notas, casos_prioridad_alta, prob_abandono_media_pct "
-                "FROM vista_delegado ORDER BY casos_prioridad_alta DESC;"
-            )
+        sql = ("SELECT grado_secundaria, total_estudiantes, asistencia_media_pct, promedio_notas, "
+               "casos_prioridad_alta, casos_prioridad_media, prob_abandono_media_pct FROM vista_director "
+               "ORDER BY grado_secundaria;")
+    else:
+        sql = ("SELECT escuela_id, distrito, zona_escuela, total_estudiantes, asistencia_media_pct, "
+               "conectividad_hogar_pct, casos_prioridad_alta, prob_abandono_media_pct FROM vista_delegado "
+               "ORDER BY escuela_id;")
 
     res = read_query(rol_norm, ambito_id, sql)
     rows = res.get("rows", [])
-    num_rows = len(rows)
-
-    # Respuestas pedagógicas contextualizadas (tanto con BD vacía como con datos cargados)
-    is_greeting = q_lower in ["hola", "buenos días", "buenas tardes", "buenas", "hey", "saludos", "qué tal", "que tal"]
-
-    if num_rows == 0:
-        if is_greeting:
-            reply_text = (
-                f"Hola. Estoy conectado como tu ayudante pedagógico en la vista de {rol_norm.capitalize()} "
-                f"(ámbito `{ambito_id}`, consultando `{primary_view}`). "
-                "Ahora mismo la tabla `alumnos_hack4edu` de la base de datos tiene 0 filas cargadas, pero puedes "
-                "explorar las situaciones de ejemplo de la pestaña 'Para revisar', pulsar el botón superior "
-                "'Cargar datos de prueba' para poblar la base de datos con 30 estudiantes reales, o preguntarme "
-                "sobre cómo acompañar casos de ausentismo por cosecha, lluvia o beca Juntos."
-            )
-        elif "a-204" in q_lower or "bajado" in q_lower or "1,4" in q_lower:
-            reply_text = (
-                "Para una situación como la del Estudiante A-204 (bajada de 1,4 puntos coincidiendo con ausencias en "
-                "semanas de cosecha y trayecto de más de 4,2 km en días de lluvia), te sugiero tres pasos:\n"
-                "1. Conversar en privado con el estudiante y su familia para validar si las faltas se deben a labores agrícolas o estado del camino.\n"
-                "2. Ofrecer entregas flexibles o cuadernillos impresos sin conexión para no penalizar los días de lluvia intensa.\n"
-                "3. Anotar el acuerdo en 'Para revisar' para hacer seguimiento conjunto en dos semanas. Recuerda: tú conoces a tu grupo y tú decides."
-            )
-        elif "a-219" in q_lower or "beca" in q_lower or "juntos" in q_lower:
-            reply_text = (
-                "El seguimiento del programa Juntos y las becas de transporte muestra un efecto protector claro sobre "
-                "la permanencia escolar. Cuando la asistencia supera el 85%, el riesgo de pérdida de beca se mantiene bajo. "
-                "Conviene reforzar positivamente el compromiso familiar en la tutoría trimestral y asegurar que las ausencias "
-                "justificadas por salud o clima queden registradas oportunamente."
-            )
-        elif "tablet" in q_lower or "conexión" in q_lower or "jueves" in q_lower:
-            reply_text = (
-                "Aprovechar las horas de equipamiento con contenidos precargados (tablets sin necesidad de internet en casa) "
-                "permite compensar la brecha del alumnado que no dispone de conectividad en el hogar. Puedes reservar la "
-                "tercera hora del jueves para actividades prácticas de refuerzo en grupo pequeño."
-            )
-        else:
-            reply_text = (
-                f"He ejecutado la consulta MCP `read_query` sobre `{primary_view}`, donde la base de datos tiene actualmente "
-                "0 estudiantes cargados. Desde un criterio pedagógico para tu rol, te recomiendo priorizar el diálogo "
-                "con las familias de estudiantes con trayectos superiores a 3 km y flexibilizar entregas en época de cosecha. "
-                "Si quieres ver resultados SQL con registros reales ahora mismo, pulsa 'Cargar 30 alumnos de prueba' en la barra superior."
-            )
+    motivo = llm_error_detail or "El asistente de lenguaje no está configurado."
+    if res.get("error"):
+        reply_text = f"{motivo} Además, no he podido consultar tus datos: {res['error']}"
+    elif not rows:
+        reply_text = f"{motivo} He consultado tus datos y no hay registros que encajen con tu pregunta."
     else:
-        if rol_norm == "docente":
-            codigos = ", ".join(str(r.get("alumno_id", "")) for r in rows[:5])
-            reply_text = (
-                f"Consultando `{primary_view}` mediante el servidor MCP ({num_rows} estudiantes encontrados: {codigos}), "
-                "se observa que la distancia al centro escolar y la dedicación laboral semanal son los factores que más "
-                "inciden en las ausencias del segundo trimestre. Te sugiero priorizar una tutoría cercana con las familias "
-                "y facilitar materiales offline para proteger su continuidad y el subsidio Juntos. Tú conoces a tu grupo; tú decides."
-            )
-        elif rol_norm == "director":
-            reply_text = (
-                f"A través de `{primary_view}` con MCP, se han analizado {num_rows} cohortes del centro educativo. "
-                "Los datos permiten a la dirección focalizar los talleres de refuerzo y el préstamo de tablets sin conexión "
-                "en los grados con mayor proporción de ausencias en semanas de lluvia o cosecha."
-            )
-        else:
-            reply_text = (
-                f"A nivel territorial mediante `{primary_view}`, se han consultado {num_rows} centros educativos de la red UGEL. "
-                "La comparativa entre escuelas rurales y urbanas respalda priorizar el presupuesto en transporte escolar rural "
-                "y servidores locales de contenido sin internet."
-            )
-
-    status_agent = (
-        llm_error_detail
-        if llm_error_detail
-        else f"Conectado a Qwen ({qwen_model}) en {qwen_base_url}"
-    )
+        columnas = list(rows[0].keys())
+        lineas = ["; ".join(f"{c}: {r.get(c)}" for c in columnas) for r in rows[:10]]
+        reply_text = (
+            f"{motivo} Mientras tanto, estos son los datos de tu ámbito que encajan con tu pregunta "
+            f"({len(rows)} filas{', se muestran 10' if len(rows) > 10 else ''}):\n- " + "\n- ".join(lineas)
+        )
 
     return {
         "reply": reply_text,
         "mcp_trace": {
-            "framework": f"LangGraph ReAct (Modelo: {qwen_model})",
-            "qwen_status": status_agent,
+            "framework": "Consulta directa (sin modelo de lenguaje)",
+            "qwen_status": motivo,
             "db_role": f"role_{rol_norm}",
             "allowed_views": [t["table_or_view"] for t in mcp_tables],
-            "tools_called": ["list_authorized_views", "describe_view", "execute_sql_query"],
+            "tools_called": ["read_query"],
             "inspected_view": primary_view,
             "sql_executed": sql,
-            "rows_returned": num_rows,
+            "rows_returned": len(rows),
         },
     }
