@@ -26,7 +26,7 @@ if _env_path.exists():
         _line = _line.strip()
         if _line and not _line.startswith("#") and "=" in _line:
             _k, _v = _line.split("=", 1)
-            os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
+            os.environ[_k.strip()] = _v.strip().strip('"').strip("'")
 
 from db.seed_db import init_and_seed_database
 from db.adapter import db_adapter
