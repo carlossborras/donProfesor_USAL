@@ -11,17 +11,26 @@ Diseño e interfaz inspirados en **EduSight Faro Educativo** (Figma Oficial).
 Si acabas de clonar el repositorio, sigue estos pasos:
 
 ```bash
+# 0. Requisito (una vez): instalar pixi
+curl -fsSL https://pixi.sh/install.sh | sh && export PATH="$HOME/.pixi/bin:$PATH"
+
 # 1. Clonar el repositorio
 git clone https://github.com/carlossborras/hack4edu.git
 cd hack4edu
 
-# 2. Configurar variables de entorno (apuntando a tu vLLM local o remoto)
-cp .env.example .env
-# Si ejecutas vLLM en esta misma máquina, edita .env con QWEN_BASE_URL=http://localhost:8001/v1
+# 2. Instalar el entorno (Python, scikit-learn 1.6.1, LightGBM, Node...) y las dependencias del frontend
+pixi install
+pixi run npm --prefix web/frontend install
 
-# 3. Arrancar el sistema (backend FastAPI + frontend React compilado)
+# 3. Configurar variables de entorno (LLM, JWT, umbrales del modelo...)
+cp .env.example .env
+
+# 4. Comprobar el modelo y arrancar (backend FastAPI + frontend React compilado)
+pixi run modelo-estado     # debe decir "disponible": true
 pixi run start
 ```
+
+> El modelo se entrenó con scikit-learn 1.6.1: no cambies esa versión o `modelo.joblib` no se podrá leer.
 
 Abre tu navegador en `http://localhost:8000` (o `http://127.0.0.1:8000`).
 
@@ -34,8 +43,10 @@ Al abrir `http://localhost:8000` aparece la pantalla de **Iniciar sesión / Crea
 | Rol | Ámbito que pide el registro | Qué ve en «Cómo vamos» |
 |---|---|---|
 | **Docente** | Escuela + grado (1.º–5.º) | Su grupo alumno a alumno (ordenado por código, sin rankings): notas por trimestre, faltas, reparto de asistencia y de notas, asistencia frente a distancia, contexto (trabajo, internet, distancia, Juntos) y «Sugerir revisión» con factores explicados. **Nunca** probabilidades ni etiquetas de riesgo. |
-| **Director/a** | Escuela | Su escuela agregada por grado: asistencia, notas T1→T2, faltas T1→T2 (efecto cosecha), sugerencias de revisión e internet en casa. |
+| **Director/a** | Escuela | Su escuela agregada por grado: asistencia, notas T1→T2, faltas T1→T2, sugerencias de revisión e internet en casa. |
 | **Delegado/a UGEL** | UGEL | Sus escuelas: asistencia, internet en casa con umbral de brecha, comparativa rural/urbana, sugerencias por escuela y lista de escuelas con brechas. |
+
+La pestaña **«Predicciones»** muestra lo que prevé el modelo, ordenado por el interés de cada rol (docente: niveles por estudiante sin porcentajes; director: por grado; delegado: por escuela y zona).
 
 Reglas de privacidad aplicadas en el servidor: consultas parametrizadas y filtradas por el ámbito del token, y **k-anonimato (k ≥ 5)** en los datos agregados (los grados o escuelas con menos de 5 estudiantes se ocultan). Con la base de datos vacía, los paneles muestran ceros y un aviso; no se inventan datos.
 
