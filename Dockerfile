@@ -15,7 +15,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir fastapi uvicorn pyjwt cryptography sqlalchemy psycopg2-binary httpx pydantic \
-    python-multipart mcp plotly pandas numpy scikit-learn lightgbm joblib langgraph langchain-core langchain-openai
+    python-multipart mcp plotly pandas numpy scikit-learn==1.6.1 lightgbm joblib langgraph langchain-core langchain-openai
 
 COPY db/ ./db/
 COPY model/ ./model/
