@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
+ROOT_DIR = Path(__file__).resolve().parents[2]  # raíz del repositorio (backend/model/config.py)
 
 
 def _float_env(nombre: str, defecto: float) -> float:
@@ -23,7 +23,7 @@ def model_path() -> Path:
     """Ruta del paquete de modelos de Carlos (salida de entrenadorModelo.py)."""
     ruta = os.environ.get("DONPROFESOR_MODEL_PATH", "").strip()
     if not ruta:
-        return ROOT_DIR / "modelo.joblib"
+        return ROOT_DIR / "ml" / "modelo.joblib"
     p = Path(ruta)
     return p if p.is_absolute() else ROOT_DIR / p
 

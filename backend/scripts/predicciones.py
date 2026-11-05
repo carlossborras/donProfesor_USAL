@@ -3,15 +3,12 @@ DONPROFESOR · Utilidad de línea de comandos para cargar estudiantes y (re)calc
 con el modelo del equipo (modelo.joblib, LightGBM + Random Forest).
 
 Ejemplos (desde la raíz del repositorio):
-  # Estado del modelo
-  pixi run python -m scripts.predicciones estado
-
-  # Recalcular las predicciones de TODOS los estudiantes (p. ej. tras reentrenar el modelo)
-  pixi run python -m scripts.predicciones recalcular
-  pixi run python -m scripts.predicciones recalcular --solo-pendientes
+  pixi run modelo-estado                     # ¿se puede cargar el modelo?
+  pixi run recalcular                        # recalcula las predicciones de todos los estudiantes
+  pixi run recalcular --solo-pendientes
 
   # Cargar un CSV en el ámbito de una escuela (igual que lo haría un director desde la web)
-  pixi run python -m scripts.predicciones cargar --csv data/muestra_30_alumnos_peru.csv --escuela ESC-01 --ugel "UGEL Cusco"
+  pixi run cargar-csv --csv data/muestra_30_alumnos_peru.csv --escuela ESC-01 --ugel "UGEL Cusco"
 """
 
 from __future__ import annotations
@@ -56,7 +53,10 @@ def _cargar(args: argparse.Namespace) -> int:
         print("Indica --escuela.", file=sys.stderr)
         return 2
     usuario = {"rol": "director", "escuela_id": args.escuela, "ugel": args.ugel, "username": "cli", "sub": "cli"}
-    filas = students.leer_tabla(Path(args.csv).read_bytes())
+    ruta = Path(args.csv)
+    if not ruta.is_absolute() and not ruta.exists():
+        ruta = ROOT.parent / ruta  # rutas relativas a la raíz del repositorio
+    filas = students.leer_tabla(ruta.read_bytes())
     resumen = students.guardar_alumnos(filas, usuario)
     print(json.dumps(resumen, ensure_ascii=False, indent=2, default=str))
     return 0
