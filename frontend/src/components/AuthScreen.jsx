@@ -36,10 +36,14 @@ function Brand() {
         <path d="M12 7L17 3L22 7" stroke="#1F6351" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         <path d="M4 10L9 10" stroke="#1F6351" strokeWidth="1.6" strokeLinecap="round" />
         <path d="M25 10L30 10" stroke="#1F6351" strokeWidth="1.6" strokeLinecap="round" />
+        <path d="M5.5 5.5L9.5 7.5" stroke="#1F6351" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M28.5 5.5L24.5 7.5" stroke="#1F6351" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M12.2 21H21.8" stroke="#1F6351" strokeWidth="1.4" />
+        <path d="M11.6 28H22.4" stroke="#1F6351" strokeWidth="1.4" />
       </svg>
       <div>
         <div className="edusight-brand-name">DONPROFESOR</div>
-        <div className="edusight-brand-sub">EDUSIGHT · FARO EDUCATIVO</div>
+        <div className="edusight-brand-sub">FARO EDUCATIVO</div>
       </div>
     </div>
   );

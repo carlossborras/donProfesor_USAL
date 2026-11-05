@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Degradado cálido del haz de luz -->
+    <radialGradient id="luzFaro" cx="50%" cy="32%" r="45%">
+      <stop offset="0%" stop-color="#FCEFD2" stop-opacity="0.95" />
+      <stop offset="40%" stop-color="#F6DE9E" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#FDFBF7" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="cuerpoFaro" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#184E40" />
+      <stop offset="50%" stop-color="#1F6351" />
+      <stop offset="100%" stop-color="#143E33" />
+    </linearGradient>
+    <linearGradient id="hazLuz" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#D99B26" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#E8BA55" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Fondo Cuaderno Cálido -->
+  <rect width="512" height="512" rx="100" fill="#FDFBF7" />
+  
+  <!-- Aura de luz circular suave -->
+  <circle cx="256" cy="165" r="140" fill="url(#luzFaro)" />
+
+  <!-- Haces de luz que guían hacia ambos lados -->
+  <path d="M210 165 L40 120 L40 210 Z" fill="url(#hazLuz)" opacity="0.35" transform="rotate(180 125 165)" />
+  <path d="M302 165 L472 120 L472 210 Z" fill="url(#hazLuz)" opacity="0.35" />
+
+  <!-- Cúpula y tejado del faro -->
+  <path d="M256 70 L216 115 L296 115 Z" fill="#184E40" />
+  <circle cx="256" cy="65" r="8" fill="#D99B26" />
+
+  <!-- Linterna / foco emisor de luz -->
+  <rect x="220" y="115" width="72" height="50" rx="4" fill="#FFF9E6" stroke="#184E40" stroke-width="8" />
+  <circle cx="256" cy="140" r="16" fill="#D99B26" />
+  <line x1="256" y1="115" x2="256" y2="165" stroke="#184E40" stroke-width="6" />
+
+  <!-- Galería / Balcón de observación -->
+  <rect x="200" y="165" width="112" height="12" rx="4" fill="#184E40" />
+  <line x1="192" y1="177" x2="320" y2="177" stroke="#D99B26" stroke-width="4" stroke-linecap="round" />
+
+  <!-- Torre troncocónica del faro -->
+  <path d="M214 177 L298 177 L324 395 L188 395 Z" fill="url(#cuerpoFaro)" />
+
+  <!-- Franja blanca central (estilo clásico de señalización) -->
+  <path d="M205 245 L307 245 L314 300 L198 300 Z" fill="#FDFBF7" opacity="0.95" />
+  <!-- Ventanitas del faro -->
+  <rect x="248" y="260" width="16" height="24" rx="8" fill="#184E40" />
+  <rect x="246" y="335" width="20" height="28" rx="10" fill="#184E40" />
+
+  <!-- Base / Pedestal firme de piedra -->
+  <path d="M172 395 L340 395 L356 425 L156 425 Z" fill="#143E33" />
+  <rect x="140" y="425" width="232" height="16" rx="6" fill="#184E40" />
+  <line x1="120" y1="445" x2="392" y2="445" stroke="#1F6351" stroke-width="5" stroke-linecap="round" />
+
+  <!-- Destellos sutiles de luz superior -->
+  <line x1="150" y1="165" x2="195" y2="165" stroke="#D99B26" stroke-width="5" stroke-linecap="round" />
+  <line x1="317" y1="165" x2="362" y2="165" stroke="#D99B26" stroke-width="5" stroke-linecap="round" />
+  <line x1="160" y1="120" x2="200" y2="140" stroke="#D99B26" stroke-width="4.5" stroke-linecap="round" />
+  <line x1="352" y1="120" x2="312" y2="140" stroke="#D99B26" stroke-width="4.5" stroke-linecap="round" />
+  <line x1="165" y1="210" x2="205" y2="190" stroke="#D99B26" stroke-width="4.5" stroke-linecap="round" />
+  <line x1="347" y1="210" x2="307" y2="190" stroke="#D99B26" stroke-width="4.5" stroke-linecap="round" />
+</svg>

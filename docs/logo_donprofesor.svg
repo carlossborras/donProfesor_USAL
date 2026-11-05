@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 240" width="800" height="240">
+  <defs>
+    <radialGradient id="luzFaroH" cx="50%" cy="32%" r="45%">
+      <stop offset="0%" stop-color="#FCEFD2" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#FDFBF7" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="cuerpoFaroH" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#184E40" />
+      <stop offset="50%" stop-color="#1F6351" />
+      <stop offset="100%" stop-color="#143E33" />
+    </linearGradient>
+  </defs>
+
+  <!-- Fondo suave -->
+  <rect width="800" height="240" rx="24" fill="#FDFBF7" />
+
+  <!-- Grupo Faro (Izquierda) -->
+  <g transform="translate(45, 15) scale(0.42)">
+    <circle cx="256" cy="165" r="140" fill="url(#luzFaroH)" />
+    <!-- Haces -->
+    <line x1="150" y1="165" x2="195" y2="165" stroke="#D99B26" stroke-width="6" stroke-linecap="round" />
+    <line x1="317" y1="165" x2="362" y2="165" stroke="#D99B26" stroke-width="6" stroke-linecap="round" />
+    <line x1="160" y1="120" x2="200" y2="140" stroke="#D99B26" stroke-width="5" stroke-linecap="round" />
+    <line x1="352" y1="120" x2="312" y2="140" stroke="#D99B26" stroke-width="5" stroke-linecap="round" />
+    <!-- Linterna y Torre -->
+    <path d="M256 70 L216 115 L296 115 Z" fill="#184E40" />
+    <circle cx="256" cy="65" r="9" fill="#D99B26" />
+    <rect x="220" y="115" width="72" height="50" rx="4" fill="#FFF9E6" stroke="#184E40" stroke-width="8" />
+    <circle cx="256" cy="140" r="16" fill="#D99B26" />
+    <rect x="200" y="165" width="112" height="12" rx="4" fill="#184E40" />
+    <path d="M214 177 L298 177 L324 395 L188 395 Z" fill="url(#cuerpoFaroH)" />
+    <path d="M205 245 L307 245 L314 300 L198 300 Z" fill="#FDFBF7" opacity="0.95" />
+    <rect x="248" y="260" width="16" height="24" rx="8" fill="#184E40" />
+    <path d="M172 395 L340 395 L356 425 L156 425 Z" fill="#143E33" />
+    <rect x="140" y="425" width="232" height="16" rx="6" fill="#184E40" />
+    <line x1="120" y1="445" x2="392" y2="445" stroke="#1F6351" stroke-width="6" stroke-linecap="round" />
+  </g>
+
+  <!-- Tipografía Institucional (Derecha) -->
+  <text x="210" y="118" font-family="'Newsreader', 'Georgia', serif" font-size="58" font-weight="700" fill="#1F6351" letter-spacing="1.5">DONPROFESOR</text>
+  <text x="214" y="160" font-family="'Plus Jakarta Sans', 'Segoe UI', sans-serif" font-size="18" font-weight="700" fill="#D99B26" letter-spacing="6">FARO EDUCATIVO</text>
+  <text x="214" y="190" font-family="'Plus Jakarta Sans', 'Segoe UI', sans-serif" font-size="13.5" font-weight="500" fill="#6B7871">Prevención pedagógica y analítica formativa · #Hack4Edu</text>
+</svg>
