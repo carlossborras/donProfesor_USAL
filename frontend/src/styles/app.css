@@ -1448,3 +1448,85 @@ body {
 .form-fieldset { border: 1px solid #ece7db; border-radius: 10px; padding: 10px 14px 4px; margin: 0 0 12px; }
 .form-fieldset legend { font-size: 12px; font-weight: 600; color: #3c5148; padding: 0 6px; }
 .form-grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 4px 14px; }
+
+/* ==========================================================================
+   FORMATO ENRIQUECIDO PARA RESPUESTAS DEL CHAT PEDAGÓGICO
+   ========================================================================== */
+.chat-formatted-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-main);
+}
+
+.msg-user .chat-formatted-content {
+  color: #ffffff;
+}
+
+.chat-heading {
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--forest-primary);
+  margin-top: 14px;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(27, 67, 50, 0.15);
+  letter-spacing: -0.01em;
+}
+
+.msg-user .chat-heading {
+  color: #ffffff;
+  border-bottom-color: rgba(255, 255, 255, 0.25);
+}
+
+.chat-heading:first-child {
+  margin-top: 0;
+}
+
+.chat-p {
+  margin: 0 0 8px 0;
+  line-height: 1.55;
+}
+
+.chat-p:last-child {
+  margin-bottom: 0;
+}
+
+.chat-ul,
+.chat-ol {
+  margin: 8px 0 12px 0;
+  padding-left: 20px;
+}
+
+.chat-ul:last-child,
+.chat-ol:last-child {
+  margin-bottom: 0;
+}
+
+.chat-li {
+  margin-bottom: 6px;
+  line-height: 1.55;
+}
+
+.chat-li:last-child {
+  margin-bottom: 0;
+}
+
+.chat-li strong,
+.chat-p strong {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.msg-user .chat-li strong,
+.msg-user .chat-p strong {
+  color: #ffffff;
+}
+
+.chat-inline-code {
+  font-family: var(--font-mono);
+  background: rgba(0, 0, 0, 0.06);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 12.5px;
+}

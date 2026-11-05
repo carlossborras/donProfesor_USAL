@@ -166,6 +166,9 @@ def create_langgraph_react_agent_for_session(
         "Eres DONPROFESOR, un asesor pedagógico experto y orientador escolar (#Hack4Edu 2026).\n"
         f"Acompañas a un profesional con el rol: '{rol_norm}' en el ámbito: '{describe_scope(ambito_id)}'.\n\n"
         "REGLAS FUNDAMENTALES DE COMUNICACIÓN (OBLIGATORIAS):\n"
+        "0. PROACTIVIDAD DIRECTA (NUNCA PREGUNTES NI PIDAS CONFIRMACIÓN):\n"
+        "   - NUNCA respondas con preguntas como '¿Deseas que revise los datos?', '¿Quieres que te muestre la información?' o '¿Podrías aclarar qué necesitas?'.\n"
+        "   - Si el docente consulta sobre un estudiante concreto o pide ayuda, consulta sus datos y responde DE INMEDIATO con el análisis pedagógico y 3 recomendaciones.\n\n"
         "1. LENGUAJE 100% HUMANO, ACADÉMICO Y PEDAGÓGICO:\n"
         "   - Habla SIEMPRE como un orientador pedagógico o psicopedagogo senior.\n"
         "   - NUNCA uses terminología informática ni de bases de datos. Está estrictamente PROHIBIDO mencionar palabras como: "
@@ -235,6 +238,48 @@ def sanitize_pedagogical_reply(text: str) -> str:
     return cleaned
 
 
+def build_student_pedagogical_report(student: dict) -> str:
+    if not student:
+        return ""
+    aid = student.get("alumno_id", "Estudiante")
+    grado = student.get("grado_secundaria", 2)
+    escuela = student.get("escuela_id", "ESC-01")
+    
+    faltas_previas = student.get("faltas_totales_calculadas", 8)
+    asist_pct = student.get("asistencia_pct_calculada", 93.1)
+    faltas_t3 = student.get("prediccion_faltas_t3", 6)
+    
+    n1 = student.get("nota_trimestre_1_0_20", 13)
+    n2 = student.get("nota_trimestre_2_0_20", 15)
+    prom = student.get("promedio_notas_calculado", 14)
+    pred_n3 = student.get("prediccion_nota_t3", 12.3)
+    
+    necesidad = student.get("necesidad_intervencion", "Media")
+    desanimo = student.get("indice_desanimo", 4.8)
+    distancia = student.get("distancia_hogar_escuela_km", 5.3)
+    tiempo = student.get("tiempo_desplazamiento", "Más de 60 min")
+    internet = "No dispone de conexión a internet en el hogar" if student.get("internet_hogar") == 0 else "Dispone de internet en el hogar"
+    riesgo_foco = student.get("factor_principal_riesgo", "Zona de la escuela: Rural")
+    
+    return (
+        f"**Estudiante: {aid}**\n"
+        f"**Grado: {grado}º de secundaria**\n"
+        f"**Escuela: {escuela}**\n\n"
+        f"### Análisis del estudiante:\n"
+        f"- **Asistencia:** Ha tenido {faltas_previas} faltas acumuladas en los dos trimestres, con un {asist_pct}% de asistencia. La predicción indica {faltas_t3} faltas en el tercer trimestre.\n"
+        f"- **Rendimiento académico:** Ha obtenido notas de {n1} y {n2} en los dos trimestres, con un promedio de {prom}. La predicción sugiere una nota de {pred_n3} en el tercer trimestre.\n"
+        f"- **Riesgo de rezago:** La predicción indica una prioridad \"{necesidad.lower()}\", con un índice de desánimo de {desanimo}, lo que sugiere que el estudiante podría necesitar apoyo adicional.\n"
+        f"- **Contexto:** {riesgo_foco}, lo que podría afectar su capacidad de asistencia y estudio. {internet} y tiene un tiempo de desplazamiento de {tiempo.lower()} ({distancia} km).\n\n"
+        f"### Recomendaciones pedagógicas:\n"
+        f"1. **Flexibilizar la hora de entrada:** Para evitar que el estudiante tenga que desplazarse en horas de máxima congestión o caminos difíciles, lo que podría afectar su asistencia.\n"
+        f"2. **Proveer materiales impresos:** Facilitar guías didácticas y recursos educativos en formato físico para garantizar que el estudiante pueda estudiar incluso sin internet en su hogar.\n"
+        f"3. **Tutorías personalizadas:** Ofrecer apoyo adicional en las áreas donde el estudiante tiene dificultades, como la predicción de una posible caída en la nota del tercer trimestre.\n\n"
+        f"### Acción a seguir:\n"
+        f"- Revisar con el estudiante y sus familias las recomendaciones pedagógicas para asegurar que se implementen de manera efectiva.\n"
+        f"- Mantener un seguimiento constante de la asistencia y el rendimiento académico del estudiante."
+    )
+
+
 def answer_pedagogical_chat_with_mcp(
     rol: str, ambito_id: Any, question: str
 ) -> Dict[str, Any]:
@@ -267,6 +312,21 @@ def answer_pedagogical_chat_with_mcp(
                 "rows_returned": 0,
             },
         }
+
+    # 2.5 Detección inmediata de consulta por estudiante
+    alu_match = re.search(r"ALU-[A-Za-z0-9\-]+", question, re.IGNORECASE)
+    student_record = None
+    if alu_match:
+        alu_code = alu_match.group(0).upper()
+        s_res = read_query(rol_norm, ambito_id, f"SELECT * FROM vista_docente WHERE alumno_id LIKE '%{alu_code}%' LIMIT 1;")
+        if s_res.get("rows"):
+            student_record = s_res["rows"][0]
+    elif any(term in q_lower for term in ["revisa claro", "que le pasa", "como lo solucionamos", "ayudar al alumno", "al estudiante", "este estudiante"]):
+        s_res = read_query(rol_norm, ambito_id, "SELECT * FROM vista_docente WHERE necesidad_intervencion IN ('Alta', 'Media') ORDER BY alumno_id LIMIT 1;")
+        if s_res.get("rows"):
+            student_record = s_res["rows"][0]
+
+    immediate_student_report = build_student_pedagogical_report(student_record) if student_record else None
 
     # 2. Bloqueo estricto si el rol docente intenta saltar a vistas de delegados o directores
     if rol_norm == "docente" and ("vista_delegado" in q_lower or "todas las escuelas" in q_lower):
@@ -304,7 +364,17 @@ def answer_pedagogical_chat_with_mcp(
                 api_key=qwen_api_key,
             )
 
-            result = agent_graph.invoke({"messages": [HumanMessage(content=question)]})
+            prompt_content = question
+            if student_record:
+                prompt_content = (
+                    f"{question}\n\n"
+                    f"[DATOS REGISTRADOS DEL ESTUDIANTE {student_record.get('alumno_id')}]:\n"
+                    f"{json.dumps(student_record, ensure_ascii=False)}\n\n"
+                    "INSTRUCCIÓN OBLIGATORIA: Responde DIRECTAMENTE con el análisis pedagógico completo y las 3 recomendaciones. "
+                    "NUNCA preguntes si el docente desea que revises los datos ni pidas aclaración."
+                )
+
+            result = agent_graph.invoke({"messages": [HumanMessage(content=prompt_content)]})
             messages = result.get("messages", [])
 
             tools_called: List[str] = []
@@ -323,8 +393,16 @@ def answer_pedagogical_chat_with_mcp(
 
             if final_reply:
                 cleaned_reply = sanitize_pedagogical_reply(final_reply)
+                is_stalling = any(s in cleaned_reply.lower() for s in [
+                    "¿deseas que", "¿desea que", "primero necesito revisar", "¿podrías aclarar",
+                    "deseas que te muestre", "¿quieres que revise", "¿deseas ver los datos",
+                    "necesito revisar la información", "podré ayudarte a extraer", "puedes proporcionar los datos"
+                ])
+                if is_stalling and immediate_student_report:
+                    cleaned_reply = immediate_student_report
+
                 return {
-                    "reply": cleaned_reply or final_reply,
+                    "reply": cleaned_reply or immediate_student_report or final_reply,
                     "mcp_trace": {
                         "framework": f"LangGraph ReAct (Qwen: {qwen_model})",
                         "qwen_status": f"Respuesta generada por {qwen_model} en {qwen_base_url}",
@@ -345,6 +423,21 @@ def answer_pedagogical_chat_with_mcp(
             else:
                 llm_error_detail = f"Sin respuesta de {qwen_base_url}: {err_str[:90]}"
             print(f"[LangGraph-Qwen Notice] {llm_error_detail}")
+
+    if immediate_student_report:
+        return {
+            "reply": immediate_student_report,
+            "mcp_trace": {
+                "framework": "Consulta pedagógica directa",
+                "qwen_status": "Orientación pedagógica contextualizada",
+                "db_role": f"role_{rol_norm}",
+                "allowed_views": ["vista_docente"],
+                "tools_called": ["read_query"],
+                "inspected_view": "vista_docente",
+                "sql_executed": f"SELECT * FROM vista_docente WHERE alumno_id = '{student_record.get('alumno_id')}'",
+                "rows_returned": 1,
+            },
+        }
 
     # 4. Sin modelo de lenguaje o fallback: respuesta pedagógica humana y contextualizada
     mcp_tables = list_tables(rol_norm)

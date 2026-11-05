@@ -104,6 +104,118 @@ function mapDbAlertToPista(item, index) {
   };
 }
 
+function FormattedMessage({ text }) {
+  if (!text) return null;
+
+  const renderInline = (str) => {
+    if (!str) return "";
+    const parts = [];
+    const regex = /(\*\*([^*]+)\*\*)|(`([^`]+)`)/g;
+    let lastIdx = 0;
+    let match;
+    let keyIdx = 0;
+
+    while ((match = regex.exec(str)) !== null) {
+      if (match.index > lastIdx) {
+        parts.push(str.substring(lastIdx, match.index));
+      }
+      if (match[2]) {
+        parts.push(<strong key={keyIdx++}>{match[2]}</strong>);
+      } else if (match[4]) {
+        parts.push(
+          <code key={keyIdx++} className="chat-inline-code">
+            {match[4]}
+          </code>
+        );
+      }
+      lastIdx = regex.lastIndex;
+    }
+    if (lastIdx < str.length) {
+      parts.push(str.substring(lastIdx));
+    }
+    return parts.length > 0 ? parts : str;
+  };
+
+  const rawLines = text.split("\n");
+  const blocks = [];
+  let currentList = null;
+
+  const flushList = () => {
+    if (!currentList) return;
+    if (currentList.type === "ol") {
+      blocks.push(
+        <ol key={blocks.length} className="chat-ol">
+          {currentList.items.map((it, idx) => (
+            <li key={idx} className="chat-li">
+              {renderInline(it)}
+            </li>
+          ))}
+        </ol>
+      );
+    } else {
+      blocks.push(
+        <ul key={blocks.length} className="chat-ul">
+          {currentList.items.map((it, idx) => (
+            <li key={idx} className="chat-li">
+              {renderInline(it)}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    currentList = null;
+  };
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    if (!line) {
+      flushList();
+      continue;
+    }
+
+    if (line.startsWith("### ") || line.startsWith("## ")) {
+      flushList();
+      const title = line.replace(/^#{2,3}\s+/, "");
+      blocks.push(
+        <div key={blocks.length} className="chat-heading">
+          {title}
+        </div>
+      );
+      continue;
+    }
+
+    const numMatch = line.match(/^(\d+)\.\s+(.*)$/);
+    if (numMatch) {
+      if (!currentList || currentList.type !== "ol") {
+        flushList();
+        currentList = { type: "ol", items: [] };
+      }
+      currentList.items.push(numMatch[2]);
+      continue;
+    }
+
+    const bulletMatch = line.match(/^[-*]\s+(.*)$/);
+    if (bulletMatch) {
+      if (!currentList || currentList.type !== "ul") {
+        flushList();
+        currentList = { type: "ul", items: [] };
+      }
+      currentList.items.push(bulletMatch[1]);
+      continue;
+    }
+
+    flushList();
+    blocks.push(
+      <p key={blocks.length} className="chat-p">
+        {renderInline(line)}
+      </p>
+    );
+  }
+  flushList();
+
+  return <div className="chat-formatted-content">{blocks}</div>;
+}
+
 export function App({ session, onLogout }) {
   // El rol y el ámbito vienen de la sesión (token JWT): no se pueden cambiar desde la interfaz.
   const activeRole = session?.user?.rol || "docente";
@@ -915,7 +1027,7 @@ export function App({ session, onLogout }) {
                           ? "Tu consulta pedagógica"
                           : `Ayudante DONPROFESOR · Rol ${roleInfo.label}`}
                       </span>
-                      <div style={{ whiteSpace: "pre-line" }}>{msg.text}</div>
+                      <FormattedMessage text={msg.text} />
 
                     </div>
                   ))}
