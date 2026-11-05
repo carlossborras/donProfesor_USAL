@@ -119,11 +119,13 @@ pixi run recalcular       # recalcula las predicciones de todos los estudiantes
 pixi run recalcular --solo-pendientes
 ```
 
-### 3. Agente ReAct con LangGraph y LLM Qwen (Bloque Chat MCP)
+### 3. Agente ReAct con LangGraph y LLM Qwen (Bloque Chat MCP «Lo hablamos»)
 - Agente ReAct implementado con `langgraph.prebuilt.create_react_agent`.
 - Herramientas MCP integradas: `list_authorized_views`, `describe_view`, `execute_sql_query`.
-- Conectado al servidor vLLM de Qwen (vLLM en puerto `8001`).
-- Estilo pedagógico humano, empático, sin emojis y con trazabilidad de consultas SQL ejecutadas.
+- Conectado al servidor vLLM de Qwen (vLLM en puerto `8001`) con procesamiento y privacidad local.
+- Estilo pedagógico humano, empático, académico y sin emojis, orientado a la acción formativa y al acompañamiento docente.
+- Diagnóstico pedagógico estructurado inmediato al consultar por cualquier estudiante (asistencia, calificaciones, barreras de contexto y recomendaciones formativas accionables).
+- Trazabilidad y gobernanza ética mediante el protocolo MCP (Model Context Protocol), consultando únicamente las vistas del rol y ámbito autorizados sin exponer tecnicismos informáticos al usuario.
 
 ---
 
