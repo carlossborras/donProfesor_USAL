@@ -256,7 +256,9 @@ def _alumno_docente(f: Dict[str, Any]) -> Dict[str, Any]:
         "nota_t2": _f(f.get("nota_trimestre_2_0_20")),
         "nota_t3_prevista": _f(f.get("prediccion_nota_t3")),
         "faltas_t3_previstas": _f(f.get("prediccion_faltas_t3")),
-        "factores": _factores(f.get("factores_json")),
+        # Los factores solo se muestran cuando el modelo sugiere revisar (necesidad Alta o Media):
+        # en estudiantes sin riesgo la explicación recoge variaciones mínimas que confunden.
+        "factores": _factores(f.get("factores_json")) if f.get("necesidad_intervencion") in ("Alta", "Media") else [],
     }
 
 
